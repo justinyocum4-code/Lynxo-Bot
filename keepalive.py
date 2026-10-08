@@ -473,7 +473,54 @@ async def api_roles(request):
              if not r.is_default() and not r.managed]
     roles.sort(key=lambda r: r.name.lower())
     return web.json_response({"roles": [
-        {"id": str(r.id), "name": r.name} for r in roles]})
+        {"id": str(r.id), "name": r.name,
+         "color": ("#%06X" % r.color.value) if r.color.value else None,
+         "position": r.position} for r in roles]})
+
+
+@_guard
+async def api_mycolor(request):
+    """Plain-words name-color diagnostic for the logged-in Discord user."""
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    sess = request.get("dash_session")
+    if not sess or not sess.get("user_id"):
+        return web.json_response(
+            {"error": "Log in with Discord first so I know whose name to check."},
+            status=401)
+    try:
+        user_id = int(sess["user_id"])
+    except (ValueError, TypeError):
+        return web.json_response(
+            {"error": "Your login session looks broken. Log in with Discord again."},
+            status=401)
+    member = guild.get_member(user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(user_id)
+        except Exception:  # noqa: BLE001
+            member = None
+    if member is None:
+        return web.json_response(
+            {"error": "I could not find you in the server. "
+                      "Make sure you are a member of it."},
+            status=404)
+    roles = sorted(member.roles, key=lambda r: r.position, reverse=True)
+    out = []
+    display_color = None
+    display_role = None
+    for r in roles:
+        color_hex = ("#%06X" % r.color.value) if r.color.value else None
+        out.append({"name": r.name, "color": color_hex, "position": r.position})
+        if display_color is None and color_hex:
+            display_color = color_hex
+            display_role = r.name
+    return web.json_response({
+        "roles": out,
+        "display_color": display_color,
+        "display_role": display_role,
+    })
 
 
 def _rr_config_view(guild, cfg):
@@ -631,6 +678,7 @@ async def start(port, bot=None):
     app.router.add_post("/api/unlock", api_unlock)
     app.router.add_get("/api/channels", api_channels)
     app.router.add_get("/api/roles", api_roles)
+    app.router.add_get("/api/mycolor", api_mycolor)
     app.router.add_get("/api/reaction-roles", api_reaction_roles_get)
     app.router.add_post("/api/reaction-roles", api_reaction_roles_post)
     app.router.add_post("/api/reaction-roles/post", api_reaction_roles_publish)
