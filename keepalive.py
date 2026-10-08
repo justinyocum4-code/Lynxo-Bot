@@ -859,6 +859,14 @@ _BUILDER_ACTIONS = {
 }
 
 
+def _builder_norm(name):
+    """Lowercase, no emoji/symbols — for forgiving name matching."""
+    import re
+    name = (name or "").strip().lstrip("#").lower()
+    # Keep letters, numbers, hyphens, underscores, spaces.
+    return re.sub(r"[^a-z0-9\-_ ]", "", name).strip()
+
+
 def _builder_find_channel(guild, name):
     name = (name or "").strip().lstrip("#").lower()
     if not name:
@@ -866,6 +874,12 @@ def _builder_find_channel(guild, name):
     for ch in guild.channels:
         if ch.name.lower() == name:
             return ch
+    # Fallback: match ignoring emojis/symbols (AI sometimes drops them).
+    norm = _builder_norm(name)
+    if norm:
+        for ch in guild.channels:
+            if _builder_norm(ch.name) == norm:
+                return ch
     return None
 
 
