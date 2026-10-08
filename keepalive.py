@@ -1344,6 +1344,7 @@ async def _builder_run(bot, guild, actions):
                         if c.name.lower() == cat_name.lower():
                             cat = c
                             break
+                nsfw = bool(raw.get("nsfw", False))
                 if ctype == "voice":
                     ch = await guild.create_voice_channel(
                         name, category=cat, reason="Dashboard server builder")
@@ -1352,7 +1353,8 @@ async def _builder_run(bot, guild, actions):
                         name, reason="Dashboard server builder")
                 else:
                     ch = await guild.create_text_channel(
-                        name, category=cat, reason="Dashboard server builder")
+                        name, category=cat, nsfw=nsfw,
+                        reason="Dashboard server builder")
                 done.append(f"Created {ctype} channel #{ch.name}.")
                 new_channels[ch.name.strip().lstrip("#").lower()] = ch
                 await mod_log(bot, guild,

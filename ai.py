@@ -138,6 +138,8 @@ async def ai_plan_server_edit(prompt):
         "Allowed actions (use exactly these field names):\n"
         '{"action":"create_channel","name":"metal-memes","type":"text",'
         '"category":"Music"}\n'
+        '{"action":"create_channel","name":"nsfw-pics","type":"text",'
+        '"nsfw":true}\n'
         '{"action":"create_channel","name":"Lounge","type":"voice"}\n'
         '{"action":"create_channel","name":"Games","type":"category"}\n'
         '{"action":"delete_channel","name":"off-topic"}\n'
@@ -182,6 +184,7 @@ async def ai_plan_server_edit(prompt):
         "teal, white, black, or a #RRGGBB hex code.\n"
         "- allow/deny use only these words: view, send, speak, connect, react.\n"
         "- achievement type is one of: messages, level, days, roles.\n"
+        "- set \"nsfw\":true for adult/18+ channels.\n"
         "- Return at most 30 actions. Copy names exactly as the user wrote them.\n"
         "- If the request is not a server-editing request, or you cannot "
         "understand it, return []."
