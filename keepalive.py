@@ -992,6 +992,100 @@ async def api_tickets_close(request):
     return web.json_response({"ok": True, "closed": closed})
 
 
+def _achievements_view(guild, cfg):
+    defs = []
+    for d in cfg.get("defs", []):
+        defs.append({
+            "id": str(d.get("id") or ""),
+            "name": str(d.get("name") or ""),
+            "description": str(d.get("description") or ""),
+            "emoji": str(d.get("emoji") or "🏆"),
+            "type": str(d.get("type") or "messages"),
+            "threshold": int(d.get("threshold") or 0),
+        })
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "announce_channel_id": str(cfg.get("announce_channel_id") or ""),
+        "defs": defs,
+    }
+
+
+@_guard
+async def api_achievements_get(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("Achievements")
+    if cog is None:
+        return web.json_response({"error": "Achievements not loaded."}, status=500)
+    cfg = cog._config(guild)
+    return web.json_response(_achievements_view(guild, cfg))
+
+
+@_guard
+async def api_achievements_save(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"error": "Body must be JSON."}, status=400)
+    bot = _bot(request)
+    cog = bot.get_cog("Achievements")
+    if cog is None:
+        return web.json_response({"error": "Achievements not loaded."}, status=500)
+    cfg = cog._config(guild)
+    cfg["enabled"] = bool(body.get("enabled"))
+    ch_id = str(body.get("announce_channel_id") or "").strip()
+    ch = guild.get_channel(int(ch_id)) if ch_id.isdigit() else None
+    cfg["announce_channel_id"] = ch.id if ch else None
+    raw_defs = body.get("defs") or []
+    if not isinstance(raw_defs, list) or len(raw_defs) > 30:
+        return web.json_response(
+            {"error": "defs must be a list of at most 30."}, status=400)
+    defs = []
+    seen_ids = set()
+    import uuid as _uuid
+    for d in raw_defs:
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("name") or "").strip()[:100]
+        if not name:
+            continue
+        ach_type = str(d.get("type") or "messages").strip()
+        if ach_type not in ("messages", "level", "days", "roles"):
+            ach_type = "messages"
+        try:
+            threshold = int(d.get("threshold") or 0)
+        except (TypeError, ValueError):
+            threshold = 0
+        if threshold <= 0 or threshold > 100000:
+            continue
+        aid = str(d.get("id") or "").strip()
+        if not aid or aid in seen_ids:
+            aid = str(_uuid.uuid4())
+        seen_ids.add(aid)
+        defs.append({
+            "id": aid,
+            "name": name,
+            "description": str(d.get("description") or "").strip()[:500],
+            "emoji": str(d.get("emoji") or "🏆").strip()[:32],
+            "type": ach_type,
+            "threshold": threshold,
+        })
+    cfg["defs"] = defs
+    # Drop earned records for deleted achievements.
+    g = bot.store.guild(guild.id)
+    earned = g.get("ach_earned", {})
+    for uid in list(earned.keys()):
+        earned[uid] = [a for a in earned[uid] if a in seen_ids]
+    bot.store.save()
+    return web.json_response({"ok": True,
+                              "achievements": _achievements_view(guild, cfg)})
+
+
 def _releases_view(cfg):
     recent = cfg.get("announced") or []
     recent = recent[-10:]
@@ -1501,6 +1595,8 @@ async def start(port, bot=None):
     app.router.add_post("/api/tickets", api_tickets_save)
     app.router.add_post("/api/tickets/post", api_tickets_post)
     app.router.add_post("/api/tickets/close", api_tickets_close)
+    app.router.add_get("/api/achievements", api_achievements_get)
+    app.router.add_post("/api/achievements", api_achievements_save)
     app.router.add_post("/api/reaction-roles/find", api_reaction_roles_find)
     app.router.add_get("/api/releases", api_releases_get)
     app.router.add_post("/api/releases", api_releases_post)

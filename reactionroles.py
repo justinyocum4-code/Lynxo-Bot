@@ -99,6 +99,12 @@ class ReactionRoles(commands.Cog):
         try:
             if add:
                 await member.add_roles(role, reason="Lynxo Bot reaction role")
+                ach = self.bot.get_cog("Achievements")
+                if ach is not None:
+                    try:
+                        ach.record_role_claim(guild, member.id)
+                    except Exception:  # noqa: BLE001
+                        pass
             else:
                 await member.remove_roles(role,
                                           reason="Lynxo Bot reaction role")

@@ -21,6 +21,7 @@ import more_security
 import community
 import utility
 import tickets
+import achievements
 
 
 class LynxoBot(commands.Bot):
@@ -45,6 +46,7 @@ class LynxoBot(commands.Bot):
         await self.add_cog(community.Community(self))
         await self.add_cog(utility.Utility(self))
         await self.add_cog(tickets.Tickets(self))
+        await self.add_cog(achievements.Achievements(self))
         # Persistent buttons must be re-registered every startup.
         self.add_view(verification.VerifyView(self))
         self.add_view(verification.AdultView(self))
