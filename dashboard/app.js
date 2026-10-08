@@ -44,9 +44,22 @@ async function api(path, opts) {
   return data;
 }
 
+/* ---------- toast ---------- */
+
+let toastTimer = null;
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.hidden = false;
+  say(msg);
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 3000);
+}
+
 /* ---------- tabs ---------- */
 
-const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases"];
+const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom"];
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "connect";
@@ -182,20 +195,50 @@ const SETTING_FIELDS = [
   "strikes_timeout", "strikes_kick", "strikes_ban",
   "nuke_channel_threshold", "nuke_auto_restore", "nuke_action",
   "auto_backup", "auto_backup_channel_id",
+  "mass_mention_filter", "mass_mention_count", "voice_raid_protection",
+  "heat_slowmode", "heat_slowmode_seconds", "heat_slowmode_threshold",
+  "raid_pattern_check",
+  "welcome_enabled", "welcome_channel_id", "welcome_message",
+  "goodbye_enabled", "goodbye_channel_id", "goodbye_message",
+  "leveling_enabled", "levelup_channel_id", "level_roles",
+  "starboard_enabled", "starboard_channel_id", "starboard_threshold",
+  "suggest_channel_id",
+  "custom_commands", "autoresponders", "tickets_enabled", "stats_enabled",
 ];
 
-let backupChannelsLoaded = false;
+// Textarea fields that hold dicts, and the separator used per line.
+const DICT_TEXTAREAS = {
+  "custom_commands": "=",
+  "autoresponders": "=",
+  "level_roles": ":",
+};
 
-async function backupEnsureChannels() {
-  if (backupChannelsLoaded) return;
+function dictToTextarea(obj, sep) {
+  if (!obj || typeof obj !== "object") return "";
+  return Object.keys(obj).map((k) => k + " " + sep + " " + obj[k]).join("\n");
+}
+
+function textareaToDict(text, sep) {
+  const out = {};
+  for (const raw of String(text || "").split("\n")) {
+    const i = raw.indexOf(sep);
+    if (i < 0) continue;
+    const k = raw.slice(0, i).trim();
+    const v = raw.slice(i + sep.length).trim();
+    if (k && v) out[k] = v;
+  }
+  return out;
+}
+
+async function ensureChannelSelect(selId, defaultLabel) {
+  const sel = $(selId);
+  if (!sel || sel.dataset.loaded === "1") return;
   const data = await api("/api/channels");
-  const sel = $("set-auto_backup_channel_id");
-  if (!sel) return;
   const current = sel.value;
   sel.innerHTML = "";
   const def = document.createElement("option");
   def.value = "";
-  def.textContent = "Mod-log channel";
+  def.textContent = defaultLabel;
   sel.appendChild(def);
   for (const c of data.channels) {
     const o = document.createElement("option");
@@ -204,44 +247,74 @@ async function backupEnsureChannels() {
     sel.appendChild(o);
   }
   sel.value = current;
-  backupChannelsLoaded = true;
+  sel.dataset.loaded = "1";
+}
+
+async function ensureAllChannelSelects() {
+  await ensureChannelSelect("set-auto_backup_channel_id", "Mod-log channel");
+  await ensureChannelSelect("set-welcome_channel_id", "— pick a channel —");
+  await ensureChannelSelect("set-goodbye_channel_id", "— pick a channel —");
+  await ensureChannelSelect("set-levelup_channel_id", "Same channel they leveled up in");
+  await ensureChannelSelect("set-starboard_channel_id", "— pick a channel —");
+  await ensureChannelSelect("set-suggest_channel_id", "Off");
 }
 
 function fillSettings(s) {
   for (const name of SETTING_FIELDS) {
     const el = $("set-" + name);
     if (!el || !(name in s)) continue;
-    if (el.type === "checkbox") el.checked = !!s[name];
-    else if (s[name] == null) el.value = "";
+    if (el.type === "checkbox") { el.checked = !!s[name]; continue; }
+    if (name in DICT_TEXTAREAS) {
+      el.value = dictToTextarea(s[name], DICT_TEXTAREAS[name]);
+      continue;
+    }
+    if (s[name] == null) el.value = "";
     else el.value = s[name];
   }
 }
 
-$("btn-load-settings").addEventListener("click", async () => {
+function settingInputValue(name, el) {
+  if (el.type === "checkbox") return el.checked;
+  if (name === "heat_slowmode_threshold") {
+    const t = el.value.trim();
+    return t === "" ? null : Number(t);
+  }
+  if (name in DICT_TEXTAREAS) return textareaToDict(el.value, DICT_TEXTAREAS[name]);
+  if (el.tagName === "SELECT") return el.value;
+  if (el.tagName === "TEXTAREA") return el.value;
+  return Number(el.value);
+}
+
+async function loadAllSettings() {
   say("Loading settings…");
   try {
-    await backupEnsureChannels();
+    await ensureAllChannelSelects();
     const data = await api("/api/settings");
     fillSettings(data.settings);
     say("Settings loaded for " + data.guild.name + ".");
   } catch (e) { /* say() already ran */ }
-});
+}
 
-$("btn-save-settings").addEventListener("click", async () => {
+async function saveAllSettings() {
   const settings = {};
   for (const name of SETTING_FIELDS) {
     const el = $("set-" + name);
     if (!el) continue;
-    settings[name] = el.type === "checkbox" ? el.checked
-      : el.tagName === "SELECT" ? el.value
-      : Number(el.value);
+    settings[name] = settingInputValue(name, el);
   }
   say("Saving…");
   try {
     const data = await api("/api/settings", { method: "PUT", body: { settings } });
-    say("Saved " + data.changed.length + " setting(s).");
+    toast("Saved " + data.changed.length + " setting(s).");
   } catch (e) { /* say() already ran */ }
-});
+}
+
+$("btn-load-settings").addEventListener("click", loadAllSettings);
+$("btn-save-settings").addEventListener("click", saveAllSettings);
+$("btn-load-community").addEventListener("click", loadAllSettings);
+$("btn-save-community").addEventListener("click", saveAllSettings);
+$("btn-load-custom").addEventListener("click", loadAllSettings);
+$("btn-save-custom").addEventListener("click", saveAllSettings);
 
 /* ---------- mod log ---------- */
 
@@ -541,6 +614,7 @@ $("btn-rr-save").addEventListener("click", async () => {
       },
     });
     rrSay("Saved " + data.reaction_roles.mappings.length + " role mapping(s).");
+    toast("Saved.");
   } catch (e) { /* say() already ran */ }
 });
 
@@ -549,6 +623,7 @@ $("btn-rr-post").addEventListener("click", async () => {
   try {
     const data = await api("/api/reaction-roles/post", { method: "POST", body: {} });
     rrSay("Message posted (id " + data.message_id + ").");
+    toast("Posted.");
   } catch (e) { /* say() already ran */ }
 });
 
@@ -558,6 +633,7 @@ $("btn-rr-delete").addEventListener("click", async () => {
   try {
     const data = await api("/api/reaction-roles/delete", { method: "POST", body: {} });
     rrSay(data.deleted ? "Message deleted." : "No posted message to delete.");
+    toast(data.deleted ? "Deleted." : "Nothing to delete.");
   } catch (e) { /* say() already ran */ }
 });
 
@@ -653,6 +729,7 @@ $("btn-rel-save").addEventListener("click", async () => {
       },
     });
     relSay("Saved.");
+    toast("Saved.");
   } catch (e) { /* say() already ran */ }
 });
 

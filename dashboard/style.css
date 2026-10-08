@@ -54,7 +54,8 @@ input[type="text"],
 input[type="url"],
 input[type="password"],
 input[type="number"],
-select {
+select,
+textarea {
   display: block;
   width: 100%;
   margin-top: 6px;
@@ -64,6 +65,7 @@ select {
   color: var(--text);
   border: 2px solid var(--gold-dim);
   border-radius: 8px;
+  font-family: inherit;
 }
 
 input[type="checkbox"] {
@@ -172,3 +174,22 @@ footer { margin-top: 32px; text-align: center; }
 @media (prefers-reduced-motion: reduce) {
   #side-menu { transition: none; }
 }
+
+/* Toast: prominent save confirmation, bottom-center. */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: var(--gold);
+  color: #000;
+  font-weight: bold;
+  font-size: 18px;
+  padding: 14px 28px;
+  border-radius: 12px;
+  z-index: 200;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  max-width: 90vw;
+  text-align: center;
+}
+#toast[hidden] { display: none; }

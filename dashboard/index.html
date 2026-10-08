@@ -8,6 +8,7 @@
 </head>
 <body>
 <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="side-menu"><span aria-hidden="true">☰</span> Menu</button>
+<div id="toast" role="status" aria-live="polite" hidden></div>
 <header>
   <h1>Lynxo Bot Dashboard</h1>
   <p>Control your Discord server's security bot from here.</p>
@@ -24,6 +25,8 @@
   <button type="button" data-tab="emergency">Emergency</button>
   <button type="button" data-tab="backups">Backups</button>
   <button type="button" data-tab="newreleases">New Releases</button>
+  <button type="button" data-tab="community">Community</button>
+  <button type="button" data-tab="custom">Custom</button>
 </nav>
 <div id="menu-scrim" hidden></div>
 
@@ -100,6 +103,16 @@
           <option value="">Mod-log channel</option>
         </select>
       </label>
+    </fieldset>
+    <fieldset>
+      <legend>More security</legend>
+      <label class="check"><input type="checkbox" id="set-mass_mention_filter"> Block messages that ping lots of people at once</label>
+      <label>How many pings trigger it <input type="number" id="set-mass_mention_count" min="2" max="50"></label>
+      <label class="check"><input type="checkbox" id="set-voice_raid_protection"> Watch for voice chat raids (mass mutes and kicks)</label>
+      <label class="check"><input type="checkbox" id="set-heat_slowmode"> Slow a channel down automatically when chat gets heated</label>
+      <label>Auto-slowmode length (seconds) <input type="number" id="set-heat_slowmode_seconds" min="1" max="21600"></label>
+      <label>Heat score that triggers auto-slowmode <input type="number" id="set-heat_slowmode_threshold" min="2" max="50" placeholder="Automatic"></label>
+      <label class="check"><input type="checkbox" id="set-raid_pattern_check"> Watch for raid-style usernames joining together</label>
     </fieldset>
     <div class="row">
       <button id="btn-save-settings" type="button">Save settings</button>
@@ -218,6 +231,104 @@
     <h3>Recently announced</h3>
     <ul id="rel-recent" class="loglist" aria-label="Recently announced releases"></ul>
     <p id="rel-status" class="muted" role="status"></p>
+  </section>
+
+  <section id="tab-community" aria-labelledby="h-community" hidden>
+    <h2 id="h-community">Community</h2>
+    <p>Welcome messages, leveling, starboard, and suggestions.</p>
+    <div class="row">
+      <button id="btn-load-community" type="button">Load community settings</button>
+    </div>
+    <fieldset>
+      <legend>Welcome messages</legend>
+      <label class="check"><input type="checkbox" id="set-welcome_enabled"> Welcome new members</label>
+      <label>Welcome channel
+        <select id="set-welcome_channel_id" aria-label="Welcome channel">
+          <option value="">— press “Load community settings” —</option>
+        </select>
+      </label>
+      <label>Welcome message
+        <textarea id="set-welcome_message" rows="2" maxlength="1000"></textarea>
+      </label>
+      <p class="muted">You can use {user} for a mention and {name} for their name.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Goodbye messages</legend>
+      <label class="check"><input type="checkbox" id="set-goodbye_enabled"> Say goodbye when members leave</label>
+      <label>Goodbye channel
+        <select id="set-goodbye_channel_id" aria-label="Goodbye channel">
+          <option value="">— press “Load community settings” —</option>
+        </select>
+      </label>
+      <label>Goodbye message
+        <textarea id="set-goodbye_message" rows="2" maxlength="1000"></textarea>
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>Leveling</legend>
+      <label class="check"><input type="checkbox" id="set-leveling_enabled"> Give XP for chatting, with level-up announcements</label>
+      <label>Level-up announcements channel
+        <select id="set-levelup_channel_id" aria-label="Level-up announcements channel">
+          <option value="">Same channel they leveled up in</option>
+        </select>
+      </label>
+      <label>Level reward roles
+        <textarea id="set-level_roles" rows="3" placeholder="5:123456789012345678"></textarea>
+      </label>
+      <p class="muted">One per line: level number, colon, role ID. Example: 5:123456789012345678</p>
+    </fieldset>
+    <fieldset>
+      <legend>Starboard</legend>
+      <label class="check"><input type="checkbox" id="set-starboard_enabled"> Repost popular messages to a starboard channel</label>
+      <label>Starboard channel
+        <select id="set-starboard_channel_id" aria-label="Starboard channel">
+          <option value="">— press “Load community settings” —</option>
+        </select>
+      </label>
+      <label>Stars needed <input type="number" id="set-starboard_threshold" min="1" max="50"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Suggestions</legend>
+      <label>Suggestion channel
+        <select id="set-suggest_channel_id" aria-label="Suggestion channel">
+          <option value="">Off</option>
+        </select>
+      </label>
+      <p class="muted">Messages in this channel get thumbs-up and thumbs-down reactions automatically.</p>
+    </fieldset>
+    <div class="row">
+      <button id="btn-save-community" type="button">Save community settings</button>
+    </div>
+  </section>
+
+  <section id="tab-custom" aria-labelledby="h-custom" hidden>
+    <h2 id="h-custom">Custom</h2>
+    <p>Custom chat commands, auto-responses, tickets, and the member-count channel.</p>
+    <div class="row">
+      <button id="btn-load-custom" type="button">Load custom settings</button>
+    </div>
+    <fieldset>
+      <legend>Custom commands</legend>
+      <label>Commands
+        <textarea id="set-custom_commands" rows="5" placeholder="rules = Be nice to each other."></textarea>
+      </label>
+      <p class="muted">One per line: trigger = response. Members type !trigger in chat.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Auto-responses</legend>
+      <label>Responses
+        <textarea id="set-autoresponders" rows="5" placeholder="hello = Hi there, welcome in!"></textarea>
+      </label>
+      <p class="muted">One per line: phrase = response. The bot replies when someone says the phrase.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Tickets and stats</legend>
+      <label class="check"><input type="checkbox" id="set-tickets_enabled"> Let members open private support tickets with /newticket</label>
+      <label class="check"><input type="checkbox" id="set-stats_enabled"> Show a member-count channel at the top of the server</label>
+    </fieldset>
+    <div class="row">
+      <button id="btn-save-custom" type="button">Save custom settings</button>
+    </div>
   </section>
 </main>
 
