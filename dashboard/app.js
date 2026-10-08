@@ -59,7 +59,7 @@ function toast(msg) {
 
 /* ---------- tabs ---------- */
 
-const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder", "tickets", "achievements"];
+const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder", "tickets", "achievements", "shoutouts"];
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "connect";
@@ -1338,6 +1338,77 @@ $("btn-ach-save").addEventListener("click", async () => {
     $("ach-defs").innerHTML = "";
     for (const d of data.achievements.defs) achAddRow(d);
     achSay("Saved " + data.achievements.defs.length + " achievement(s).");
+    toast("Saved.");
+  } catch (e) { /* say() already ran */ }
+});
+
+/* ---------------- Shoutouts tab ---------------- */
+function shoutSay(msg) {
+  const el = $("shout-status");
+  if (el) { el.textContent = msg; say(msg); }
+}
+async function shoutEnsureLists() {
+  const chSel = $("shout-channel");
+  if (chSel && !chSel.dataset.loaded) {
+    try {
+      const data = await api("/api/channels");
+      const cur = chSel.value;
+      chSel.innerHTML = "";
+      const def = document.createElement("option");
+      def.value = ""; def.textContent = "— same channel the command was used in —";
+      chSel.appendChild(def);
+      for (const c of data.channels) {
+        const o = document.createElement("option");
+        o.value = c.id; o.textContent = "#" + c.name;
+        chSel.appendChild(o);
+      }
+      chSel.value = cur;
+      chSel.dataset.loaded = "1";
+    } catch (e) { /* say() already ran */ }
+  }
+  const rSel = $("shout-motm-role");
+  if (rSel && !rSel.dataset.loaded) {
+    try {
+      const data = await api("/api/roles");
+      const cur = rSel.value;
+      rSel.innerHTML = "";
+      const def = document.createElement("option");
+      def.value = ""; def.textContent = "— no role —";
+      rSel.appendChild(def);
+      for (const r of (data.roles || [])) {
+        const o = document.createElement("option");
+        o.value = r.id; o.textContent = r.name;
+        rSel.appendChild(o);
+      }
+      rSel.value = cur;
+      rSel.dataset.loaded = "1";
+    } catch (e) { /* say() already ran */ }
+  }
+}
+$("btn-shout-load").addEventListener("click", async () => {
+  shoutSay("Loading shoutout settings…");
+  try {
+    await shoutEnsureLists();
+    const data = await api("/api/shoutouts");
+    $("shout-enabled").checked = !!data.enabled;
+    $("shout-channel").value = data.channel_id || "";
+    $("shout-limit").value = data.daily_limit || 3;
+    $("shout-reset").checked = !!data.monthly_reset;
+    $("shout-motm-role").value = data.motm_role_id || "";
+    shoutSay("Loaded.");
+  } catch (e) { /* say() already ran */ }
+});
+$("btn-shout-save").addEventListener("click", async () => {
+  shoutSay("Saving…");
+  try {
+    await api("/api/shoutouts", { method: "POST", body: {
+      enabled: $("shout-enabled").checked,
+      channel_id: $("shout-channel").value,
+      daily_limit: parseInt($("shout-limit").value, 10) || 3,
+      monthly_reset: $("shout-reset").checked,
+      motm_role_id: $("shout-motm-role").value,
+    }});
+    shoutSay("Shoutout settings saved.");
     toast("Saved.");
   } catch (e) { /* say() already ran */ }
 });

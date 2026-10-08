@@ -30,6 +30,7 @@
   <button type="button" data-tab="serverbuilder">Server Builder</button>
   <button type="button" data-tab="tickets">Tickets</button>
   <button type="button" data-tab="achievements">Achievements</button>
+  <button type="button" data-tab="shoutouts">Shoutouts</button>
 </nav>
 <div id="menu-scrim" hidden></div>
 
@@ -497,6 +498,36 @@
       <button id="btn-ach-save" type="button">Save achievements</button>
     </div>
     <p id="ach-status" class="muted" role="status"></p>
+  </section>
+  <section id="tab-shoutouts" aria-labelledby="h-shout" hidden>
+    <h2 id="h-shout">Shoutouts</h2>
+    <p>Members recognize each other with /shoutout. Monthly leaderboard included.</p>
+    <div class="row">
+      <button id="btn-shout-load" type="button">Load shoutout settings</button>
+    </div>
+    <fieldset>
+      <legend>Settings</legend>
+      <label class="check"><input type="checkbox" id="shout-enabled"> Shoutouts turned on</label>
+      <label>Shoutouts channel
+        <select id="shout-channel" aria-label="Shoutouts channel">
+          <option value="">— press “Load shoutout settings” —</option>
+        </select>
+      </label>
+      <label>Shoutouts per member per day
+        <input id="shout-limit" type="number" min="1" max="20" value="3" aria-label="Daily shoutout limit">
+      </label>
+      <label class="check"><input type="checkbox" id="shout-reset" checked> Monthly leaderboard reset with Member of the Month</label>
+      <label>Member of the Month role
+        <select id="shout-motm-role" aria-label="Member of the Month role">
+          <option value="">— press “Load shoutout settings” —</option>
+        </select>
+      </label>
+      <p class="muted">The monthly winner automatically gets this role. Optional.</p>
+    </fieldset>
+    <div class="row">
+      <button id="btn-shout-save" type="button">Save shoutout settings</button>
+    </div>
+    <p id="shout-status" class="muted" role="status"></p>
   </section>
 </main>
 
