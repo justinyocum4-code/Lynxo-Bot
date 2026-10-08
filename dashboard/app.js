@@ -59,7 +59,7 @@ function toast(msg) {
 
 /* ---------- tabs ---------- */
 
-const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder", "tickets", "achievements", "shoutouts"];
+const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder", "tickets", "achievements", "shoutouts", "nsfw"];
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "connect";
@@ -1409,6 +1409,57 @@ $("btn-shout-save").addEventListener("click", async () => {
       motm_role_id: $("shout-motm-role").value,
     }});
     shoutSay("Shoutout settings saved.");
+    toast("Saved.");
+  } catch (e) { /* say() already ran */ }
+});
+
+/* ---------------- NSFW tab ---------------- */
+function nsfwSay(msg) {
+  const el = $("nsfw-status");
+  if (el) { el.textContent = msg; say(msg); }
+}
+async function nsfwEnsureChannels(selected) {
+  const sel = $("nsfw-channels");
+  if (!sel || sel.dataset.loaded) {
+    // Re-apply selection even if already loaded.
+    if (sel && selected) {
+      for (const o of sel.options) o.selected = selected.includes(o.value);
+    }
+    return;
+  }
+  try {
+    const data = await api("/api/channels");
+    sel.innerHTML = "";
+    for (const c of data.channels) {
+      const o = document.createElement("option");
+      o.value = c.id; o.textContent = "#" + c.name;
+      if (selected && selected.includes(c.id)) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.dataset.loaded = "1";
+  } catch (e) { /* say() already ran */ }
+}
+$("btn-nsfw-load").addEventListener("click", async () => {
+  nsfwSay("Loading NSFW settings…");
+  try {
+    const data = await api("/api/nsfw-scan");
+    $("nsfw-enabled").checked = !!data.enabled;
+    await nsfwEnsureChannels(data.channel_ids || []);
+    nsfwSay("Loaded.");
+  } catch (e) { /* say() already ran */ }
+});
+$("btn-nsfw-save").addEventListener("click", async () => {
+  const ids = [];
+  for (const o of $("nsfw-channels").options) {
+    if (o.selected) ids.push(o.value);
+  }
+  nsfwSay("Saving…");
+  try {
+    await api("/api/nsfw-scan", { method: "POST", body: {
+      enabled: $("nsfw-enabled").checked,
+      channel_ids: ids,
+    }});
+    nsfwSay("NSFW settings saved.");
     toast("Saved.");
   } catch (e) { /* say() already ran */ }
 });

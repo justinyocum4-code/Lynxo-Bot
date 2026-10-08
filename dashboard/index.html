@@ -31,6 +31,7 @@
   <button type="button" data-tab="tickets">Tickets</button>
   <button type="button" data-tab="achievements">Achievements</button>
   <button type="button" data-tab="shoutouts">Shoutouts</button>
+  <button type="button" data-tab="nsfw">NSFW</button>
 </nav>
 <div id="menu-scrim" hidden></div>
 
@@ -528,6 +529,26 @@
       <button id="btn-shout-save" type="button">Save shoutout settings</button>
     </div>
     <p id="shout-status" class="muted" role="status"></p>
+  </section>
+  <section id="tab-nsfw" aria-labelledby="h-nsfw" hidden>
+    <h2 id="h-nsfw">NSFW</h2>
+    <p>Automatic AI photo scanning for your 18+ channels.</p>
+    <div class="row">
+      <button id="btn-nsfw-load" type="button">Load NSFW settings</button>
+    </div>
+    <fieldset>
+      <legend>Photo scan</legend>
+      <label class="check"><input type="checkbox" id="nsfw-enabled"> Scan photos automatically</label>
+      <p class="muted">When someone posts a photo in a scanned channel, the bot checks if it looks AI-generated or real and replies with its best guess.</p>
+      <label>Channels to scan
+        <select id="nsfw-channels" multiple size="6" aria-label="Channels to scan for AI photos"></select>
+      </label>
+      <p class="muted">Hold to select more than one. Only picks up channels after you press “Load NSFW settings”.</p>
+    </fieldset>
+    <div class="row">
+      <button id="btn-nsfw-save" type="button">Save NSFW settings</button>
+    </div>
+    <p id="nsfw-status" class="muted" role="status"></p>
   </section>
 </main>
 
