@@ -1,0 +1,19 @@
+# Render blueprint for Lynxo Bot.
+# Push the contents of this folder as the repo root, then
+# "New +" -> "Blueprint" in the Render dashboard and point it at the repo.
+# NOTE: this is a *web* service (not a worker) so Render gives it a $PORT
+# and can hit the /health endpoint below.
+services:
+  - type: web
+    name: lynxo-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
