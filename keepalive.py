@@ -1086,6 +1086,60 @@ async def api_achievements_save(request):
                               "achievements": _achievements_view(guild, cfg)})
 
 
+def _shoutouts_view(guild, cfg):
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "channel_id": str(cfg.get("channel_id") or ""),
+        "daily_limit": int(cfg.get("daily_limit") or 3),
+        "monthly_reset": bool(cfg.get("monthly_reset", True)),
+        "motm_role_id": str(cfg.get("motm_role_id") or ""),
+    }
+
+
+@_guard
+async def api_shoutouts_get(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("Shoutouts")
+    if cog is None:
+        return web.json_response({"error": "Shoutouts not loaded."}, status=500)
+    return web.json_response(_shoutouts_view(guild, cog._config(guild)))
+
+
+@_guard
+async def api_shoutouts_save(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"error": "Body must be JSON."}, status=400)
+    bot = _bot(request)
+    cog = bot.get_cog("Shoutouts")
+    if cog is None:
+        return web.json_response({"error": "Shoutouts not loaded."}, status=500)
+    cfg = cog._config(guild)
+    cfg["enabled"] = bool(body.get("enabled"))
+    ch_id = str(body.get("channel_id") or "").strip()
+    ch = guild.get_channel(int(ch_id)) if ch_id.isdigit() else None
+    cfg["channel_id"] = ch.id if ch else None
+    try:
+        limit = int(body.get("daily_limit") or 3)
+    except (TypeError, ValueError):
+        limit = 3
+    cfg["daily_limit"] = max(1, min(limit, 20))
+    cfg["monthly_reset"] = bool(body.get("monthly_reset", True))
+    r_id = str(body.get("motm_role_id") or "").strip()
+    role = guild.get_role(int(r_id)) if r_id.isdigit() else None
+    cfg["motm_role_id"] = role.id if role else None
+    bot.store.save()
+    return web.json_response({"ok": True,
+                              "shoutouts": _shoutouts_view(guild, cfg)})
+
+
 def _releases_view(cfg):
     recent = cfg.get("announced") or []
     recent = recent[-10:]
@@ -1677,6 +1731,8 @@ async def start(port, bot=None):
     app.router.add_post("/api/tickets/post", api_tickets_post)
     app.router.add_post("/api/tickets/close", api_tickets_close)
     app.router.add_get("/api/achievements", api_achievements_get)
+    app.router.add_get("/api/shoutouts", api_shoutouts_get)
+    app.router.add_post("/api/shoutouts", api_shoutouts_save)
     app.router.add_post("/api/achievements", api_achievements_save)
     app.router.add_post("/api/reaction-roles/find", api_reaction_roles_find)
     app.router.add_get("/api/releases", api_releases_get)
