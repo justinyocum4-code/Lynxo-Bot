@@ -11,6 +11,14 @@ import os
 import aiohttp
 
 MODEL = "openai/gpt-oss-20b"
+
+# Text models for planning/moderation, tried in order.
+TEXT_MODELS = [
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
+    "qwen/qwen3-32b",
+]
 URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Vision-capable models, tried in order. Groq retires models over time,
@@ -37,29 +45,31 @@ async def ai_moderate(text):
         "Normal chat, friendly profanity, and metal lyrics are OK.\n\n"
         f"Message: {text[:500]}"
     )
-    try:
-        timeout = aiohttp.ClientTimeout(total=12)
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                URL,
-                headers={"Authorization": f"Bearer {key}"},
-                json={
-                    "model": MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 60,
-                    "temperature": 0,
-                },
-                timeout=timeout,
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-        out = data["choices"][0]["message"]["content"].strip()
-        if out.upper().startswith("FLAG"):
-            return out
-        return None
-    except Exception:
-        return None
+    for model in TEXT_MODELS:
+        try:
+            timeout = aiohttp.ClientTimeout(total=12)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    URL,
+                    headers={"Authorization": f"Bearer {key}"},
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 60,
+                        "temperature": 0,
+                    },
+                    timeout=timeout,
+                ) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = await resp.json()
+            out = data["choices"][0]["message"]["content"].strip()
+            if out.upper().startswith("FLAG"):
+                return out
+            return None
+        except Exception:  # noqa: BLE001
+            continue
+    return None
 
 
 async def ai_plan_server_edit(prompt):
@@ -103,37 +113,46 @@ async def ai_plan_server_edit(prompt):
         "- If the request is not a server-editing request, or you cannot "
         "understand it, return []."
     )
-    try:
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                URL,
-                headers={"Authorization": f"Bearer {key}"},
-                json={
-                    "model": MODEL,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": prompt[:1000]},
-                    ],
-                    "max_tokens": 800,
-                    "temperature": 0,
-                },
-                timeout=timeout,
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-        text = data["choices"][0]["message"]["content"].strip()
-        # Strip markdown fences if the model added them anyway.
-        if text.startswith("```"):
-            text = "\n".join(
-                ln for ln in text.split("\n")
-                if not ln.strip().startswith("```")
-            ).strip()
-        actions = json.loads(text)
-        return actions if isinstance(actions, list) else None
-    except Exception:  # noqa: BLE001
-        return None
+    for model in TEXT_MODELS:
+        try:
+            timeout = aiohttp.ClientTimeout(total=45)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    URL,
+                    headers={"Authorization": f"Bearer {key}"},
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": prompt[:1000]},
+                        ],
+                        "max_tokens": 800,
+                        "temperature": 0,
+                    },
+                    timeout=timeout,
+                ) as resp:
+                    if resp.status != 200:
+                        try:
+                            body = (await resp.text())[:200]
+                        except Exception:
+                            body = "?"
+                        print(f"ai_plan: {model} -> HTTP {resp.status}: {body}",
+                              flush=True)
+                        continue
+                    data = await resp.json()
+            text = data["choices"][0]["message"]["content"].strip()
+            # Strip markdown fences if the model added them anyway.
+            if text.startswith("```"):
+                text = "\n".join(
+                    ln for ln in text.split("\n")
+                    if not ln.strip().startswith("```")
+                ).strip()
+            actions = json.loads(text)
+            return actions if isinstance(actions, list) else None
+        except Exception as e:  # noqa: BLE001
+            print(f"ai_plan: {model} -> error: {e}", flush=True)
+            continue
+    return None
 
 
 async def ai_vision_scan(image_bytes, mime, prompt):
