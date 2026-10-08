@@ -29,6 +29,7 @@
   <button type="button" data-tab="custom">Custom</button>
   <button type="button" data-tab="serverbuilder">Server Builder</button>
   <button type="button" data-tab="tickets">Tickets</button>
+  <button type="button" data-tab="achievements">Achievements</button>
 </nav>
 <div id="menu-scrim" hidden></div>
 
@@ -468,6 +469,34 @@
         <button id="btn-tickets-refresh" type="button">Refresh list</button>
       </div>
     </fieldset>
+  </section>
+  <section id="tab-achievements" aria-labelledby="h-ach" hidden>
+    <h2 id="h-ach">Achievements</h2>
+    <p>Members earn badges for being active. Set them up here.</p>
+    <div class="row">
+      <button id="btn-ach-load" type="button">Load achievements</button>
+    </div>
+    <fieldset>
+      <legend>Settings</legend>
+      <label class="check"><input type="checkbox" id="ach-enabled"> Achievements turned on</label>
+      <label>Announcement channel
+        <select id="ach-channel" aria-label="Achievement announcement channel">
+          <option value="">— press “Load achievements” —</option>
+        </select>
+      </label>
+      <p class="muted">Where earned achievements are announced. Blank = same channel they earned it in.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Achievements</legend>
+      <div id="ach-defs" aria-label="Achievement definitions"></div>
+      <div class="row">
+        <button id="btn-ach-add" type="button">Add achievement</button>
+      </div>
+    </fieldset>
+    <div class="row">
+      <button id="btn-ach-save" type="button">Save achievements</button>
+    </div>
+    <p id="ach-status" class="muted" role="status"></p>
   </section>
 </main>
 

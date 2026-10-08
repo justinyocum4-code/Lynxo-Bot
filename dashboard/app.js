@@ -59,7 +59,7 @@ function toast(msg) {
 
 /* ---------- tabs ---------- */
 
-const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder", "tickets"];
+const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder", "tickets", "achievements"];
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "connect";
@@ -1197,4 +1197,149 @@ $("btn-tickets-refresh").addEventListener("click", () => {
   tkSay("Refreshing…");
   tkLoadOpen();
   tkSay("List refreshed.");
+});
+
+/* ---------------- Achievements tab ---------------- */
+function achSay(msg) {
+  const el = $("ach-status");
+  if (el) { el.textContent = msg; say(msg); }
+}
+const ACH_TYPES = [
+  ["messages", "Messages sent"],
+  ["level", "Level reached"],
+  ["days", "Days active"],
+  ["roles", "Reaction roles claimed"],
+];
+const ACH_EMOJIS = [["🏆","Trophy"],["💬","Speech"],["⭐","Star"],["🌟","Glowing star"],
+  ["🔥","Fire"],["💀","Skull"],["🤘","Rock on"],["🎸","Guitar"],["👑","Crown"],
+  ["💎","Gem"],["🎯","Target"],["🚀","Rocket"],["💪","Flexed arm"],["🎉","Party"]];
+function achFillEmojiSelect(sel, current) {
+  sel.innerHTML = "";
+  for (const [emoji, label] of ACH_EMOJIS) {
+    const o = document.createElement("option");
+    o.value = emoji;
+    o.textContent = emoji + " " + label;
+    if (emoji === current) o.selected = true;
+    sel.appendChild(o);
+  }
+  if (current && !ACH_EMOJIS.some(([e]) => e === current)) {
+    const o = document.createElement("option");
+    o.value = current;
+    o.textContent = current + " (current)";
+    o.selected = true;
+    sel.appendChild(o);
+  }
+}
+function achAddRow(d) {
+  d = d || {};
+  const wrap = $("ach-defs");
+  const row = document.createElement("div");
+  row.className = "ach-row";
+  row.dataset.aid = d.id || "";
+  const nameL = document.createElement("label");
+  nameL.textContent = "Name ";
+  const nameI = document.createElement("input");
+  nameI.type = "text"; nameI.className = "ach-name"; nameI.maxLength = 100;
+  nameI.value = d.name || ""; nameI.setAttribute("aria-label", "Achievement name");
+  nameL.appendChild(nameI);
+  const descL = document.createElement("label");
+  descL.textContent = "Description ";
+  const descI = document.createElement("input");
+  descI.type = "text"; descI.className = "ach-desc"; descI.maxLength = 500;
+  descI.value = d.description || ""; descI.setAttribute("aria-label", "Description");
+  descL.appendChild(descI);
+  const emojiL = document.createElement("label");
+  emojiL.textContent = "Emoji ";
+  const emojiS = document.createElement("select");
+  emojiS.className = "ach-emoji"; emojiS.setAttribute("aria-label", "Emoji");
+  achFillEmojiSelect(emojiS, d.emoji || "🏆");
+  emojiL.appendChild(emojiS);
+  const typeL = document.createElement("label");
+  typeL.textContent = "Earned for ";
+  const typeS = document.createElement("select");
+  typeS.className = "ach-type"; typeS.setAttribute("aria-label", "Requirement type");
+  for (const [v, label] of ACH_TYPES) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = label;
+    if (v === d.type) o.selected = true;
+    typeS.appendChild(o);
+  }
+  typeL.appendChild(typeS);
+  const thL = document.createElement("label");
+  thL.textContent = "How many ";
+  const thI = document.createElement("input");
+  thI.type = "number"; thI.className = "ach-threshold"; thI.min = "1"; thI.max = "100000";
+  thI.value = d.threshold || ""; thI.setAttribute("aria-label", "Threshold number");
+  thL.appendChild(thI);
+  const remove = document.createElement("button");
+  remove.type = "button"; remove.textContent = "Remove";
+  remove.setAttribute("aria-label", "Remove this achievement");
+  remove.addEventListener("click", () => row.remove());
+  row.appendChild(nameL); row.appendChild(descL); row.appendChild(emojiL);
+  row.appendChild(typeL); row.appendChild(thL); row.appendChild(remove);
+  wrap.appendChild(row);
+}
+async function achEnsureChannels() {
+  const sel = $("ach-channel");
+  if (!sel || sel.dataset.loaded) return;
+  try {
+    const data = await api("/api/channels");
+    const cur = sel.value;
+    sel.innerHTML = "";
+    const def = document.createElement("option");
+    def.value = ""; def.textContent = "Same channel they earned it in";
+    sel.appendChild(def);
+    for (const c of data.channels) {
+      if (c.type !== 0) continue;
+      const o = document.createElement("option");
+      o.value = c.id; o.textContent = "#" + c.name;
+      sel.appendChild(o);
+    }
+    sel.value = cur;
+    sel.dataset.loaded = "1";
+  } catch (e) { /* say() already ran */ }
+}
+$("btn-ach-load").addEventListener("click", async () => {
+  achSay("Loading achievements…");
+  try {
+    await achEnsureChannels();
+    const data = await api("/api/achievements");
+    $("ach-enabled").checked = !!data.enabled;
+    $("ach-channel").value = data.announce_channel_id || "";
+    $("ach-defs").innerHTML = "";
+    for (const d of data.defs) achAddRow(d);
+    achSay("Loaded " + data.defs.length + " achievement(s).");
+  } catch (e) { /* say() already ran */ }
+});
+$("btn-ach-add").addEventListener("click", () => {
+  achAddRow({});
+  achSay("Achievement added. Fill it in, then Save.");
+});
+$("btn-ach-save").addEventListener("click", async () => {
+  const defs = [];
+  for (const row of document.querySelectorAll("#ach-defs .ach-row")) {
+    const name = row.querySelector(".ach-name").value.trim();
+    if (!name) continue;
+    defs.push({
+      id: row.dataset.aid || "",
+      name,
+      description: row.querySelector(".ach-desc").value.trim(),
+      emoji: row.querySelector(".ach-emoji").value,
+      type: row.querySelector(".ach-type").value,
+      threshold: parseInt(row.querySelector(".ach-threshold").value, 10) || 0,
+    });
+  }
+  achSay("Saving…");
+  try {
+    const data = await api("/api/achievements", { method: "POST", body: {
+      enabled: $("ach-enabled").checked,
+      announce_channel_id: $("ach-channel").value,
+      defs,
+    }});
+    // Refresh ids for newly created ones.
+    $("ach-defs").innerHTML = "";
+    for (const d of data.achievements.defs) achAddRow(d);
+    achSay("Saved " + data.achievements.defs.length + " achievement(s).");
+    toast("Saved.");
+  } catch (e) { /* say() already ran */ }
 });
