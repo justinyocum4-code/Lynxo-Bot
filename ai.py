@@ -154,7 +154,13 @@ async def ai_plan_server_edit(prompt):
         '{"action":"config_leveling","enabled":true,'
         '"levelup_channel":"general"}\n'
         '{"action":"add_level_reward","level":5,"role":"VIP"}\n'
-        '{"action":"remove_level_reward","level":5}\n\n'
+        '{"action":"remove_level_reward","level":5}\n'
+        '{"action":"config_achievements","enabled":true,'
+        '"announce_channel":"general"}\n'
+        '{"action":"add_achievement","name":"Chatterbox",'
+        '"description":"Send 100 messages","emoji":"\U0001F4AC",'
+        '"type":"messages","threshold":100}\n'
+        '{"action":"remove_achievement","name":"Chatterbox"}\n\n'
         "Examples:\n"
         "Request: add a text channel called metal-memes\n"
         '[{"action":"create_channel","name":"metal-memes","type":"text"}]\n'
@@ -175,6 +181,7 @@ async def ai_plan_server_edit(prompt):
         "- color is one of: red, blue, green, gold, purple, orange, pink, "
         "teal, white, black, or a #RRGGBB hex code.\n"
         "- allow/deny use only these words: view, send, speak, connect, react.\n"
+        "- achievement type is one of: messages, level, days, roles.\n"
         "- Return at most 30 actions. Copy names exactly as the user wrote them.\n"
         "- If the request is not a server-editing request, or you cannot "
         "understand it, return []."

@@ -1168,6 +1168,7 @@ _BUILDER_ACTIONS = {
     "set_role_color", "set_channel_perms",
     "rename_channel", "rename_role", "move_channel",
     "config_leveling", "add_level_reward", "remove_level_reward",
+    "config_achievements", "add_achievement", "remove_achievement",
 }
 
 
@@ -1514,6 +1515,82 @@ async def _builder_run(bot, guild, actions):
                                   f"BUILDER — removed level {level} reward.")
                 else:
                     skipped.append(f"No reward set for level {level}.")
+            elif act == "config_achievements":
+                g = bot.store.guild(guild.id)
+                cfg = g.setdefault("achievements", {})
+                cfg.setdefault("defs", [])
+                if "enabled" in raw:
+                    cfg["enabled"] = bool(raw["enabled"])
+                ach_name = str(raw.get("announce_channel", "") or "").strip()
+                if ach_name:
+                    ach_ch = _builder_find_channel(guild, ach_name)
+                    if ach_ch is None:
+                        skipped.append(
+                            f"Could not find channel '{ach_name}' for "
+                            "achievement announcements.")
+                        continue
+                    cfg["announce_channel_id"] = ach_ch.id
+                bot.store.save()
+                done.append("Updated the achievement settings.")
+                await mod_log(bot, guild,
+                              "BUILDER — updated achievement settings.")
+            elif act == "add_achievement":
+                import uuid as _uuid
+                name = str(raw.get("name") or "").strip()[:100]
+                if not name:
+                    skipped.append("Achievement needs a name.")
+                    continue
+                ach_type = str(raw.get("type") or "messages").strip().lower()
+                if ach_type not in ("messages", "level", "days", "roles"):
+                    ach_type = "messages"
+                try:
+                    threshold = int(raw.get("threshold", 0))
+                except (TypeError, ValueError):
+                    threshold = 0
+                if threshold <= 0 or threshold > 100000:
+                    skipped.append(
+                        f"Achievement '{name}' needs a threshold from 1 to "
+                        "100000.")
+                    continue
+                g = bot.store.guild(guild.id)
+                cfg = g.setdefault("achievements", {})
+                defs = cfg.setdefault("defs", [])
+                # Replace same-named achievement instead of duplicating.
+                defs = [d for d in defs
+                        if str(d.get("name", "")).lower() != name.lower()]
+                defs.append({
+                    "id": str(_uuid.uuid4()),
+                    "name": name,
+                    "description": str(raw.get("description") or "").strip()[:500],
+                    "emoji": str(raw.get("emoji") or "🏆").strip()[:32],
+                    "type": ach_type,
+                    "threshold": threshold,
+                })
+                cfg["defs"] = defs
+                bot.store.save()
+                done.append(f"Created the '{name}' achievement.")
+                await mod_log(bot, guild,
+                              f"BUILDER — created achievement '{name}'.")
+            elif act == "remove_achievement":
+                name = str(raw.get("name") or "").strip().lower()
+                if not name:
+                    skipped.append("Achievement needs a name to remove.")
+                    continue
+                g = bot.store.guild(guild.id)
+                cfg = g.setdefault("achievements", {})
+                defs = cfg.get("defs", [])
+                kept = [d for d in defs
+                        if str(d.get("name", "")).lower() != name]
+                if len(kept) == len(defs):
+                    skipped.append(
+                        f"Could not find achievement '{raw.get('name')}'.")
+                    continue
+                cfg["defs"] = kept
+                bot.store.save()
+                done.append(f"Removed the '{raw.get('name')}' achievement.")
+                await mod_log(bot, guild,
+                              f"BUILDER — removed achievement "
+                              f"'{raw.get('name')}'.")
         except discord.Forbidden:
             skipped.append("Discord wouldn't let me do one change "
                            "(missing permission).")
