@@ -1,13 +1,19 @@
 /* Lynxo Bot dashboard logic. No build step, no dependencies. */
 "use strict";
+
 const $ = (id) => document.getElementById(id);
-function say(msg) { $("status").textContent = msg; }
+
+function say(msg) {
+  $("status").textContent = msg;
+}
+
 function creds() {
   return {
     base: (localStorage.getItem("lynxo_api_base_v2") || "").replace(/\/$/, ""),
     key: localStorage.getItem("lynxo_session") || "",
   };
 }
+
 async function api(path, opts) {
   opts = opts || {};
   const c = creds();
@@ -30,18 +36,22 @@ async function api(path, opts) {
     throw e;
   }
   let data = {};
-  try { data = await res.json(); } catch (e) {}
+  try { data = await res.json(); } catch (e) { /* ignore */ }
   if (!res.ok) {
     say(data.error || ("Request failed (" + res.status + ")."));
     throw new Error(data.error || res.status);
   }
   return data;
 }
+
+/* ---------- connect ---------- */
+
 function saveBase() {
   const base = $("api-base").value.trim().replace(/\/$/, "");
   localStorage.setItem("lynxo_api_base_v2", base);
   return base;
 }
+
 $("btn-discord-login").addEventListener("click", async () => {
   const base = saveBase();
   if (!base) { say("Type your bot's address first."); return; }
@@ -58,6 +68,7 @@ $("btn-discord-login").addEventListener("click", async () => {
     say("Could not reach the bot. Check the address — the bot may be asleep; try again in a minute.");
   }
 });
+
 async function checkLogin() {
   say("Checking login…");
   try {
@@ -70,13 +81,15 @@ async function checkLogin() {
     } else {
       say(who + "Connected, but the bot has no server set up yet. Run /setup in Discord first.");
     }
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 }
+
 (function handleReturn() {
   const params = new URLSearchParams(window.location.search);
   const session = params.get("session");
   const error = params.get("error");
   if (session || error) {
+    // Strip the query string so the token never sits in the address bar.
     window.history.replaceState({}, document.title, window.location.pathname);
   }
   if (session) {
@@ -92,12 +105,16 @@ async function checkLogin() {
     say("Discord login didn't finish. Press “Log in with Discord” to try again.");
     return;
   }
+  // Returning visit: restore the bot address; re-check a saved login.
   $("api-base").value = localStorage.getItem("lynxo_api_base_v2") || "https://lynxo-bot.onrender.com";
   if ($("api-base").value && localStorage.getItem("lynxo_session")) {
     say("Welcome back. Checking your saved login…");
     checkLogin();
   }
 })();
+
+/* ---------- settings ---------- */
+
 const SETTING_FIELDS = [
   "word_filter", "invite_filter", "link_filter", "massping_filter", "ai_moderation",
   "raid_join_threshold", "raid_join_window",
@@ -105,6 +122,7 @@ const SETTING_FIELDS = [
   "strikes_timeout", "strikes_kick", "strikes_ban",
   "nuke_channel_threshold", "nuke_auto_restore", "nuke_action",
 ];
+
 function fillSettings(s) {
   for (const name of SETTING_FIELDS) {
     const el = $("set-" + name);
@@ -113,14 +131,16 @@ function fillSettings(s) {
     else el.value = s[name];
   }
 }
+
 $("btn-load-settings").addEventListener("click", async () => {
   say("Loading settings…");
   try {
     const data = await api("/api/settings");
     fillSettings(data.settings);
     say("Settings loaded for " + data.guild.name + ".");
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 });
+
 $("btn-save-settings").addEventListener("click", async () => {
   const settings = {};
   for (const name of SETTING_FIELDS) {
@@ -134,8 +154,11 @@ $("btn-save-settings").addEventListener("click", async () => {
   try {
     const data = await api("/api/settings", { method: "PUT", body: { settings } });
     say("Saved " + data.changed.length + " setting(s).");
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 });
+
+/* ---------- mod log ---------- */
+
 $("btn-refresh-log").addEventListener("click", async () => {
   say("Loading log…");
   try {
@@ -151,9 +174,13 @@ $("btn-refresh-log").addEventListener("click", async () => {
       ul.appendChild(li);
     }
     say("Log refreshed (" + data.logs.length + " entries).");
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 });
+
+/* ---------- user lookup ---------- */
+
 let lookedUpId = null;
+
 $("btn-lookup").addEventListener("click", async () => {
   const id = $("lookup-id").value.trim();
   if (!id) { say("Type a user ID first."); return; }
@@ -171,8 +198,9 @@ $("btn-lookup").addEventListener("click", async () => {
     }
     box.innerHTML = html;
     say("Found " + data.count + " strike(s).");
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 });
+
 $("btn-clear-strikes").addEventListener("click", async () => {
   if (!lookedUpId) return;
   if (!confirm("Clear all strikes for this user?")) return;
@@ -182,8 +210,11 @@ $("btn-clear-strikes").addEventListener("click", async () => {
     $("lookup-result").innerHTML = "<p>Strikes cleared.</p>";
     $("btn-clear-strikes").disabled = true;
     say("Strikes cleared.");
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 });
+
+/* ---------- emergency ---------- */
+
 async function panicCall(mode) {
   const label = mode === "lockdown" ? "full lockdown" : "panic mode";
   if (!confirm("Turn on " + label + "? This locks the server immediately.")) return;
@@ -191,18 +222,23 @@ async function panicCall(mode) {
   try {
     const data = await api("/api/panic", { method: "POST", body: { mode } });
     say(data.message);
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 }
+
 $("btn-panic").addEventListener("click", () => panicCall("panic"));
 $("btn-lockdown").addEventListener("click", () => panicCall("lockdown"));
+
 $("btn-unlock").addEventListener("click", async () => {
   if (!confirm("Turn panic mode off and restore permissions?")) return;
   say("Unlocking…");
   try {
     const data = await api("/api/unlock", { method: "POST", body: {} });
     say(data.message);
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 });
+
+/* ---------- backups ---------- */
+
 $("btn-backup-now").addEventListener("click", async () => {
   say("Making a backup… this can take a minute.");
   try {
@@ -216,8 +252,9 @@ $("btn-backup-now").addEventListener("click", async () => {
     a.click();
     a.remove();
     say("Backup downloaded as " + data.filename + ". Keep it somewhere safe.");
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
 });
+
 $("btn-refresh-backups").addEventListener("click", async () => {
   say("Loading backups…");
   try {
@@ -233,5 +270,180 @@ $("btn-refresh-backups").addEventListener("click", async () => {
       ul.appendChild(li);
     }
     say(data.backups.length + " backup(s) on the bot.");
-  } catch (e) {}
+  } catch (e) { /* say() already ran */ }
+});
+
+/* ---------- reaction roles ---------- */
+
+let rrRoles = [];       // [{id, name}] from /api/roles
+let rrListsLoaded = false;
+
+function rrSay(msg) {
+  $("rr-status").textContent = msg;
+  say(msg);
+}
+
+async function rrEnsureLists() {
+  if (rrListsLoaded) return;
+  const [ch, roles] = await Promise.all([
+    api("/api/channels"),
+    api("/api/roles"),
+  ]);
+  const sel = $("rr-channel");
+  sel.innerHTML = "";
+  for (const c of ch.channels) {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = "#" + c.name;
+    sel.appendChild(o);
+  }
+  rrRoles = roles.roles;
+  rrListsLoaded = true;
+  // Refresh role selects in any rows already on screen.
+  for (const row of document.querySelectorAll("#rr-mappings .rr-row")) {
+    rrFillRoleSelect(row.querySelector(".rr-role"), row.dataset.roleId || "");
+  }
+}
+
+function rrFillRoleSelect(sel, selectedId) {
+  sel.innerHTML = "";
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "— pick a role —";
+  sel.appendChild(blank);
+  for (const r of rrRoles) {
+    const o = document.createElement("option");
+    o.value = r.id;
+    o.textContent = r.name;
+    if (r.id === selectedId) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+function rrAddRow(mapping) {
+  mapping = mapping || {};
+  const row = document.createElement("div");
+  row.className = "rr-row";
+  row.dataset.roleId = mapping.role_id || "";
+
+  const emojiLabel = document.createElement("label");
+  emojiLabel.textContent = "Emoji ";
+  const emoji = document.createElement("input");
+  emoji.type = "text";
+  emoji.className = "rr-emoji";
+  emoji.setAttribute("inputmode", "text");
+  emoji.placeholder = "🤘";
+  emoji.maxLength = 32;
+  emoji.value = mapping.emoji || "";
+  emoji.setAttribute("aria-label", "Emoji");
+  emojiLabel.appendChild(emoji);
+
+  const roleLabel = document.createElement("label");
+  roleLabel.textContent = "Role ";
+  const roleSel = document.createElement("select");
+  roleSel.className = "rr-role";
+  roleSel.setAttribute("aria-label", "Role");
+  rrFillRoleSelect(roleSel, mapping.role_id || "");
+  roleSel.addEventListener("change", () => {
+    row.dataset.roleId = roleSel.value;
+    // Default the label to the role name when empty.
+    const labelEl = row.querySelector(".rr-label");
+    if (!labelEl.value) {
+      const r = rrRoles.find((x) => x.id === roleSel.value);
+      if (r) labelEl.value = r.name;
+    }
+  });
+  roleLabel.appendChild(roleSel);
+
+  const nameLabel = document.createElement("label");
+  nameLabel.textContent = "Shown name ";
+  const labelInput = document.createElement("input");
+  labelInput.type = "text";
+  labelInput.className = "rr-label";
+  labelInput.maxLength = 100;
+  labelInput.value = mapping.label || "";
+  labelInput.placeholder = "Metalhead";
+  labelInput.setAttribute("aria-label", "Shown name");
+  nameLabel.appendChild(labelInput);
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "rr-remove";
+  remove.textContent = "Remove";
+  remove.addEventListener("click", () => row.remove());
+
+  row.appendChild(emojiLabel);
+  row.appendChild(roleLabel);
+  row.appendChild(nameLabel);
+  row.appendChild(remove);
+  $("rr-mappings").appendChild(row);
+}
+
+$("btn-rr-add-row").addEventListener("click", async () => {
+  try {
+    await rrEnsureLists();
+  } catch (e) { /* say() already ran */ return; }
+  rrAddRow();
+  rrSay("Row added. Fill in the emoji, role, and shown name.");
+});
+
+$("btn-rr-load").addEventListener("click", async () => {
+  rrSay("Loading reaction roles…");
+  try {
+    await rrEnsureLists();
+    const data = await api("/api/reaction-roles");
+    $("rr-channel").value = data.channel_id || "";
+    $("rr-title").value = data.title || "Pick your roles";
+    $("rr-description").value = data.description || "";
+    $("rr-color").value = data.color || "#FFD700";
+    $("rr-mappings").innerHTML = "";
+    for (const m of data.mappings) rrAddRow(m);
+    if (data.message_id) {
+      rrSay("Loaded. A message is already posted (id " + data.message_id + ").");
+    } else {
+      rrSay("Loaded. No message posted yet — press “Post / update message”.");
+    }
+  } catch (e) { /* say() already ran */ }
+});
+
+$("btn-rr-save").addEventListener("click", async () => {
+  const mappings = [];
+  for (const row of document.querySelectorAll("#rr-mappings .rr-row")) {
+    const emoji = row.querySelector(".rr-emoji").value.trim();
+    const roleId = row.querySelector(".rr-role").value;
+    const label = row.querySelector(".rr-label").value.trim();
+    if (!emoji || !roleId) continue;
+    mappings.push({ emoji, role_id: roleId, label });
+  }
+  rrSay("Saving…");
+  try {
+    const data = await api("/api/reaction-roles", {
+      method: "POST",
+      body: {
+        channel_id: $("rr-channel").value,
+        title: $("rr-title").value,
+        description: $("rr-description").value,
+        color: $("rr-color").value,
+        mappings,
+      },
+    });
+    rrSay("Saved " + data.reaction_roles.mappings.length + " role mapping(s).");
+  } catch (e) { /* say() already ran */ }
+});
+
+$("btn-rr-post").addEventListener("click", async () => {
+  rrSay("Posting…");
+  try {
+    const data = await api("/api/reaction-roles/post", { method: "POST", body: {} });
+    rrSay("Message posted (id " + data.message_id + ").");
+  } catch (e) { /* say() already ran */ }
+});
+
+$("btn-rr-delete").addEventListener("click", async () => {
+  if (!confirm("Delete the posted reaction-role message?")) return;
+  rrSay("Deleting…");
+  try {
+    const data = await api("/api/reaction-roles/delete", { method: "POST", body: {} });
+    rrSay(data.deleted ? "Message deleted." : "No posted message to delete.");
+  } catch (e) { /* say() already ran */ }
 });
