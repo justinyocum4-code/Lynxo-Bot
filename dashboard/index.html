@@ -27,6 +27,7 @@
   <button type="button" data-tab="newreleases">New Releases</button>
   <button type="button" data-tab="community">Community</button>
   <button type="button" data-tab="custom">Custom</button>
+  <button type="button" data-tab="serverbuilder">Server Builder</button>
 </nav>
 <div id="menu-scrim" hidden></div>
 
@@ -329,6 +330,18 @@
     <div class="row">
       <button id="btn-save-custom" type="button">Save custom settings</button>
     </div>
+  </section>
+  <section id="tab-serverbuilder" aria-labelledby="h-builder" hidden>
+    <h2 id="h-builder">Server Builder</h2>
+    <p>Describe the change in plain words and the bot will make it. It can add or delete channels and roles, recolor roles, and set who can do what in a channel. It will never touch the bot's own setup channels and roles.</p>
+    <p class="muted">Examples: "add a text channel called metal-memes" — "make a VIP role with a gold color" — "delete the off-topic channel" — "let the Member role send messages in general".</p>
+    <label>What should change?
+      <textarea id="builder-prompt" rows="4" placeholder="add a text channel called metal-memes"></textarea>
+    </label>
+    <div class="row">
+      <button id="btn-builder-run" type="button">Run</button>
+    </div>
+    <div id="builder-result" role="status"></div>
   </section>
 </main>
 

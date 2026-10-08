@@ -59,7 +59,7 @@ function toast(msg) {
 
 /* ---------- tabs ---------- */
 
-const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom"];
+const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder"];
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "connect";
@@ -744,4 +744,31 @@ $("btn-rel-check").addEventListener("click", async () => {
     const cfg = await api("/api/releases");
     relShowRecent(cfg.recent);
   } catch (e) { /* say() already ran */ }
+});
+
+/* ---------- server builder ---------- */
+
+$("btn-builder-run").addEventListener("click", async () => {
+  const prompt = $("builder-prompt").value.trim();
+  if (!prompt) {
+    say("Type what you want changed first.");
+    return;
+  }
+  const btn = $("btn-builder-run");
+  btn.disabled = true;
+  say("Working on it…");
+  $("builder-result").textContent = "Working on it…";
+  try {
+    const data = await api("/api/editserver", {
+      method: "POST",
+      body: { prompt: prompt },
+    });
+    const lines = [];
+    for (const d of (data.done || [])) lines.push(d);
+    for (const s of (data.skipped || [])) lines.push("Skipped: " + s);
+    $("builder-result").textContent =
+      lines.length ? lines.join("\n") : "Nothing was changed.";
+    toast("Done. " + (data.done || []).length + " change(s) made.");
+  } catch (e) { /* say() already ran */ }
+  btn.disabled = false;
 });
