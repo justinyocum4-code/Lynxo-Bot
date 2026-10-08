@@ -88,6 +88,85 @@ def _is_mod(interaction):
             and user.guild_permissions.manage_messages)
 
 
+async def ai_scan_photo(bot, guild, message, user_id=None,
+                        expected_fingers=None):
+    """Shared AI photo scan: duplicate check + Groq vision advisory.
+
+    Downloads the first image attachment on the message, SHA256 duplicate
+    check against verify_photo_hashes, Groq vision advisory scan via
+    ai.ai_vision_scan. Returns plain-words results text. Advisory only —
+    never approves or denies on its own.
+
+    user_id: the person the photo is attributed to (for the duplicate
+        check and the "who" label). Defaults to the message author.
+    expected_fingers: the finger count the person was asked to hold up,
+        if known (18+ review posts). None for generic messages.
+    """
+    attachment = next(
+        (a for a in message.attachments
+         if (a.content_type or "").startswith("image/")), None)
+    if attachment is None:
+        return "AI scan: no photo attached to that message."
+    try:
+        image_bytes = await attachment.read()
+    except discord.HTTPException:
+        return "AI scan: couldn't download the photo."
+
+    # 1. Duplicate check: has this exact photo been submitted before?
+    sha = hashlib.sha256(image_bytes).hexdigest()
+    g = bot.store.guild(guild.id)
+    hashes = g["verify_photo_hashes"]
+    uid = str(user_id) if user_id is not None else str(message.author.id)
+    prev = hashes.get(sha)
+    if prev is None:
+        dup_line = ("Duplicate check: this photo has not been submitted "
+                    "before.")
+    elif prev == uid:
+        dup_line = ("Duplicate check: this is the same photo this user "
+                    "submitted before — not a red flag on its own.")
+    else:
+        dup_line = (f"Duplicate check: RED FLAG — this exact photo was "
+                    f"already submitted by a different user (id {prev}). "
+                    f"Possible photo reuse.")
+    hashes[sha] = uid
+    while len(hashes) > 2000:
+        hashes.pop(next(iter(hashes)))
+    bot.store.save()
+
+    # 2. Vision scan (advisory).
+    fingers = expected_fingers if expected_fingers is not None else "?"
+    prompt = (
+        "You are an advisory assistant helping a human moderator review "
+        "a verification photo for a Discord server. You do NOT make "
+        "the final decision — a human moderator does.\n"
+        f"The person was asked to take a selfie holding up "
+        f"{fingers} finger(s).\n"
+        "Reply in short plain-words bullet points, no more than 8 lines:\n"
+        "- Signs this looks AI-generated vs a genuine photo (be specific "
+        "about artifacts: hands, fingers, skin, background, lighting).\n"
+        "- Does it look like a real selfie of a person? (yes / no / "
+        "uncertain)\n"
+        "- Apparent age: ADULT, MINOR, or UNCERTAIN. Say UNCERTAIN unless "
+        "the person is clearly an adult or clearly a minor."
+    )
+    note = await ai_vision_scan(
+        image_bytes, attachment.content_type or "image/jpeg", prompt)
+    if note:
+        ai_part = "AI notes:\n" + note
+    else:
+        ai_part = ("AI notes: unavailable right now (no vision access) — "
+                   "the duplicate check above still stands.")
+
+    member = guild.get_member(int(uid)) if uid.isdigit() else None
+    who = user_label(member) if member else f"user id {uid}"
+    return (
+        f"🔍 AI SCAN — {who}\n"
+        f"{dup_line}\n"
+        f"{ai_part}\n"
+        f"This is advisory — you make the final call."
+    )
+
+
 class ReviewView(discord.ui.View):
     """Persistent Approve / Deny / AI Scan buttons on 18+ review posts."""
     def __init__(self, bot):
@@ -426,73 +505,10 @@ class Verification(commands.Cog):
         Advisory only — never approves or denies on its own.
         """
         await interaction.response.defer()  # public "thinking" in the mod channel
-        msg = interaction.message
-        attachment = next(
-            (a for a in msg.attachments
-             if (a.content_type or "").startswith("image/")), None)
-        if attachment is None:
-            await msg.reply("AI scan: no photo attached to this review post.",
-                            mention_author=False)
-            return
-        try:
-            image_bytes = await attachment.read()
-        except discord.HTTPException:
-            await msg.reply("AI scan: couldn't download the photo.",
-                            mention_author=False)
-            return
-
-        # 1. Duplicate check: has this exact photo been submitted before?
-        sha = hashlib.sha256(image_bytes).hexdigest()
-        g = self.bot.store.guild(interaction.guild.id)
-        hashes = g["verify_photo_hashes"]
-        uid = str(rec["user_id"])
-        prev = hashes.get(sha)
-        if prev is None:
-            dup_line = ("Duplicate check: this photo has not been submitted "
-                        "before.")
-        elif prev == uid:
-            dup_line = ("Duplicate check: this is the same photo this user "
-                        "submitted before — not a red flag on its own.")
-        else:
-            dup_line = (f"Duplicate check: RED FLAG — this exact photo was "
-                        f"already submitted by a different user (id {prev}). "
-                        f"Possible photo reuse.")
-        hashes[sha] = uid
-        while len(hashes) > 2000:
-            hashes.pop(next(iter(hashes)))
-        self.bot.store.save()
-
-        # 2. Vision scan (advisory).
-        prompt = (
-            "You are an advisory assistant helping a human moderator review "
-            "an 18+ verification selfie for a Discord server. You do NOT make "
-            "the final decision — a human moderator does.\n"
-            f"The person was asked to take a selfie holding up "
-            f"{rec.get('expected', '?')} finger(s).\n"
-            "Reply in short plain-words bullet points, no more than 8 lines:\n"
-            "- Signs this looks AI-generated vs a genuine photo (be specific "
-            "about artifacts: hands, fingers, skin, background, lighting).\n"
-            "- Does it look like a real selfie of a person? (yes / no / "
-            "uncertain)\n"
-            "- Apparent age: ADULT, MINOR, or UNCERTAIN. Say UNCERTAIN unless "
-            "the person is clearly an adult or clearly a minor."
-        )
-        note = await ai_vision_scan(
-            image_bytes, attachment.content_type or "image/jpeg", prompt)
-        if note:
-            ai_part = "AI notes:\n" + note
-        else:
-            ai_part = ("AI notes: unavailable right now (no vision access) — "
-                       "the duplicate check above still stands.")
-
-        member = interaction.guild.get_member(int(uid))
-        who = user_label(member) if member else f"user id {uid}"
-        await msg.reply(
-            f"🔍 AI SCAN — {who}\n"
-            f"{dup_line}\n"
-            f"{ai_part}\n"
-            f"This is advisory — you make the final call.",
-            mention_author=False)
+        text = await ai_scan_photo(
+            self.bot, interaction.guild, interaction.message,
+            user_id=rec["user_id"], expected_fingers=rec.get("expected"))
+        await interaction.message.reply(text, mention_author=False)
 
     async def _record_fail(self, guild, member, why):
         g = self.bot.store.guild(guild.id)
@@ -546,6 +562,41 @@ class Verification(commands.Cog):
                       f"You can try again with the Verify 18+ button.")
         await interaction.response.send_message(
             f"{member.mention} denied.", ephemeral=True)
+
+    @app_commands.context_menu(name="Scan photo with AI")
+    async def scan_photo_ctx(self, interaction: discord.Interaction,
+                             message: discord.Message):
+        """Message context menu: AI-scan any photo. Mods only.
+
+        Long-press (mobile) or right-click (desktop) a message with a photo
+        and choose "Scan photo with AI". No IDs to copy.
+        """
+        if not _is_mod(interaction):
+            await interaction.response.send_message(
+                "Mods only.", ephemeral=True)
+            return
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message(
+                "Use that inside the server.", ephemeral=True)
+            return
+        has_photo = any(
+            (a.content_type or "").startswith("image/")
+            for a in message.attachments)
+        if not has_photo:
+            await interaction.response.send_message(
+                "That message has no photo.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        text = await ai_scan_photo(self.bot, guild, message)
+        try:
+            await message.reply(text, mention_author=False)
+        except (discord.Forbidden, discord.HTTPException):
+            await interaction.followup.send(
+                "Couldn't post the scan results in that channel.",
+                ephemeral=True)
+            return
+        await interaction.followup.send("Scan posted.", ephemeral=True)
 
 
 async def setup(bot):
