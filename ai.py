@@ -14,7 +14,11 @@ URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Vision-capable models, tried in order. Groq retires models over time,
 # so ai_vision_scan falls through the list and returns None if none work.
+# (Llama 4 Scout/Maverick were retired from Groq's vision lineup in 2026;
+# Qwen models are the current image-capable ones.)
 VISION_MODELS = [
+    "qwen/qwen3.6-27b",
+    "qwen/qwen3.8-27b",
     "meta-llama/llama-4-scout-17b-16e-instruct",
     "meta-llama/llama-4-maverick-17b-128e-instruct",
 ]
@@ -88,11 +92,18 @@ async def ai_vision_scan(image_bytes, mime, prompt):
                     timeout=timeout,
                 ) as resp:
                     if resp.status != 200:
+                        try:
+                            body = (await resp.text())[:200]
+                        except Exception:
+                            body = "?"
+                        print(f"ai_vision_scan: {model} -> HTTP {resp.status}: {body}",
+                              flush=True)
                         continue  # try the next model
                     data = await resp.json()
             text = data["choices"][0]["message"]["content"].strip()
             if text:
                 return text
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            print(f"ai_vision_scan: {model} -> error: {e}", flush=True)
             continue  # try the next model
     return None

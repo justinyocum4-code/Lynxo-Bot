@@ -280,16 +280,24 @@ class Verification(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.active_sessions = set()  # user ids with an open 18+ photo wait
-        # Message context menu (can't use the decorator inside a class).
-        self.scan_ctx_menu = app_commands.ContextMenu(
-            name="Scan photo with AI",
-            callback=self.scan_photo_ctx,
-        )
-        self.bot.tree.add_command(self.scan_ctx_menu)
+
+    async def cog_load(self):
+        # Register the context menu on setup guilds ONLY (not globally):
+        # the global sync plus copy_global_to() was showing it twice.
+        self._ctx_menus = []
+        for gid in self.bot.store.setup_guilds():
+            menu = app_commands.ContextMenu(
+                name="Scan photo with AI",
+                callback=self.scan_photo_ctx,
+            )
+            self.bot.tree.add_command(menu, guild=discord.Object(id=gid))
+            self._ctx_menus.append(menu)
 
     async def cog_unload(self):
-        self.bot.tree.remove_command(
-            self.scan_ctx_menu.name, type=self.scan_ctx_menu.type)
+        for menu in getattr(self, "_ctx_menus", []):
+            for gid in self.bot.store.setup_guilds():
+                self.bot.tree.remove_command(
+                    menu.name, guild=discord.Object(id=gid), type=menu.type)
 
     # ---------------- /setup ----------------
 
