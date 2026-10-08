@@ -75,7 +75,8 @@ async def ai_plan_server_edit(prompt):
         "array of actions. Respond with ONLY the JSON array, no other text, "
         "no markdown fences.\n\n"
         "Allowed actions (use exactly these field names):\n"
-        '{"action":"create_channel","name":"metal-memes","type":"text"}\n'
+        '{"action":"create_channel","name":"metal-memes","type":"text",'
+        '"category":"Music"}\n'
         '{"action":"create_channel","name":"Lounge","type":"voice"}\n'
         '{"action":"create_channel","name":"Games","type":"category"}\n'
         '{"action":"delete_channel","name":"off-topic"}\n'
@@ -94,6 +95,7 @@ async def ai_plan_server_edit(prompt):
         '"allow":["view","send"],"deny":[]}]\n\n'
         "Rules:\n"
         "- type is one of: text, voice, category (default text).\n"
+        "- category is optional: exact name of a category to place the channel in.\n"
         "- color is one of: red, blue, green, gold, purple, orange, pink, "
         "teal, white, black, or a #RRGGBB hex code.\n"
         "- allow/deny use only these words: view, send, speak, connect, react.\n"

@@ -946,15 +946,22 @@ async def _builder_run(bot, guild, actions):
                 if _builder_find_channel(guild, name):
                     skipped.append(f"Channel #{name} already exists.")
                     continue
+                cat = None
+                cat_name = str(raw.get("category", "") or "").strip()
+                if cat_name and ctype in ("text", "voice"):
+                    for c in guild.categories:
+                        if c.name.lower() == cat_name.lower():
+                            cat = c
+                            break
                 if ctype == "voice":
                     ch = await guild.create_voice_channel(
-                        name, reason="Dashboard server builder")
+                        name, category=cat, reason="Dashboard server builder")
                 elif ctype == "category":
                     ch = await guild.create_category_channel(
                         name, reason="Dashboard server builder")
                 else:
                     ch = await guild.create_text_channel(
-                        name, reason="Dashboard server builder")
+                        name, category=cat, reason="Dashboard server builder")
                 done.append(f"Created {ctype} channel #{ch.name}.")
                 await mod_log(bot, guild,
                               f"BUILDER — created {ctype} channel #{ch.name}.")
