@@ -49,6 +49,33 @@ DEFAULT_SETTINGS = {
     # Automatic scheduled backups
     "auto_backup": True,           # take a backup automatically every day
     "auto_backup_channel_id": None,  # where to post it (None = mod-log channel)
+    # More security (Phase 4)
+    "mass_mention_filter": True,   # block messages pinging many users at once
+    "mass_mention_count": 10,      # distinct user mentions that trigger it
+    "voice_raid_protection": True,  # watch for mass voice mutes/kicks
+    "heat_slowmode": True,         # auto-slow a channel when chat gets heated
+    "heat_slowmode_seconds": 10,   # slowmode length to apply
+    "heat_slowmode_threshold": None,  # heat score that triggers it (None = automatic)
+    "raid_pattern_check": True,    # watch for raid-style usernames joining together
+    # Community
+    "welcome_enabled": False,
+    "welcome_channel_id": None,
+    "welcome_message": "Welcome to the server, {user}!",
+    "goodbye_enabled": False,
+    "goodbye_channel_id": None,
+    "goodbye_message": "{name} has left the server.",
+    "leveling_enabled": False,     # XP for chatting, level-up announcements
+    "levelup_channel_id": None,    # None = announce in the channel they leveled in
+    "level_roles": {},             # {"5": role_id} — granted on reaching that level
+    "starboard_enabled": False,
+    "starboard_channel_id": None,
+    "starboard_threshold": 3,      # distinct non-bot star reactions needed
+    "suggest_channel_id": None,    # messages here get thumbs up/down reactions
+    # Utility
+    "custom_commands": {},         # trigger -> response text (!trigger in chat)
+    "autoresponders": {},          # phrase -> response text
+    "stats_enabled": False,        # member-count voice channel at the top
+    "tickets_enabled": False,      # let members open support tickets
 }
 
 # Regex fragments (case-insensitive) for common scam / phishing lures.

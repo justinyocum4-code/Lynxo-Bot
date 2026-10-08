@@ -38,7 +38,91 @@ _INT_BOUNDS = {
     "new_account_age_days": (1, 90),
     "copypasta_count": (2, 20),
     "copypasta_window": (5, 300),
+    "mass_mention_count": (2, 50),
+    "heat_slowmode_seconds": (1, 21600),
+    "starboard_threshold": (1, 50),
 }
+
+# Settings that hold a channel id: None/"" means "unset", otherwise the
+# value must be a real text channel in the guild.
+_CHANNEL_ID_KEYS = (
+    "auto_backup_channel_id",
+    "welcome_channel_id",
+    "goodbye_channel_id",
+    "levelup_channel_id",
+    "starboard_channel_id",
+    "suggest_channel_id",
+)
+
+# Max characters for free-text settings.
+_TEXT_CAPS = {
+    "welcome_message": 1000,
+    "goodbye_message": 1000,
+}
+
+
+def _validate_channel_id(guild, value):
+    """None/"" -> None; otherwise must be a real text channel.
+
+    Returns (ok, cleaned_value)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return True, None
+    try:
+        cid = int(value)
+    except (ValueError, TypeError):
+        return False, None
+    ch = guild.get_channel(cid)
+    if not isinstance(ch, discord.TextChannel):
+        return False, None
+    return True, cid
+
+
+def _validate_dict(key, value, guild):
+    """Validate dict settings from the dashboard.
+
+    Returns (ok, cleaned_dict). Unknown dict keys are rejected."""
+    if not isinstance(value, dict):
+        return False, None
+    if key == "custom_commands":
+        cleaned = {}
+        for k, v in value.items():
+            k = str(k).strip().lower()
+            if not k or len(k) > 32 or " " in k:
+                continue
+            v = str(v)
+            if not v or len(v) > 1500:
+                continue
+            cleaned[k] = v
+        return True, cleaned
+    if key == "autoresponders":
+        cleaned = {}
+        for k, v in value.items():
+            k = str(k).strip().lower()
+            if not k or len(k) > 100:
+                continue
+            v = str(v)
+            if not v or len(v) > 1500:
+                continue
+            cleaned[k] = v
+        return True, cleaned
+    if key == "level_roles":
+        cleaned = {}
+        for k, v in value.items():
+            try:
+                level = int(k)
+            except (ValueError, TypeError):
+                continue
+            if not 1 <= level <= 100:
+                continue
+            try:
+                rid = int(v)
+            except (ValueError, TypeError):
+                continue
+            if guild.get_role(rid) is None:
+                continue
+            cleaned[str(level)] = rid
+        return True, cleaned
+    return False, None
 
 
 def _client_id():
@@ -307,20 +391,27 @@ async def api_settings_put(request):
     for key, value in (body.get("settings") or {}).items():
         if key not in DEFAULT_SETTINGS:
             continue  # unknown keys are ignored, never stored
-        # Backup channel: None/empty means "use the mod-log channel";
-        # otherwise it must be a real text channel in this guild.
-        if key == "auto_backup_channel_id":
+        # Channel ids: None/empty means "unset"; otherwise the value must
+        # be a real text channel in this guild.
+        if key in _CHANNEL_ID_KEYS:
+            ok, value = _validate_channel_id(guild, value)
+            if not ok:
+                continue
+            s[key] = value
+            changed.append(key)
+            continue
+        # Slowmode heat threshold: None/empty means "automatic";
+        # otherwise a number in range.
+        if key == "heat_slowmode_threshold":
             if value is None or (isinstance(value, str) and not value.strip()):
                 value = None
             else:
                 try:
-                    cid = int(value)
+                    value = int(value)
                 except (ValueError, TypeError):
                     continue
-                ch = guild.get_channel(cid)
-                if not isinstance(ch, discord.TextChannel):
+                if not 2 <= value <= 50:
                     continue
-                value = cid
             s[key] = value
             changed.append(key)
             continue
@@ -333,6 +424,10 @@ async def api_settings_put(request):
                 if key in _INT_BOUNDS:
                     lo, hi = _INT_BOUNDS[key]
                     value = max(lo, min(hi, value))
+            elif isinstance(default, dict):
+                ok, value = _validate_dict(key, value, guild)
+                if not ok:
+                    continue
             elif isinstance(default, list):
                 if not isinstance(value, list):
                     continue
@@ -342,6 +437,8 @@ async def api_settings_put(request):
                     continue
                 if key == "new_account_action" and value not in ("flag", "quarantine"):
                     continue
+                if key in _TEXT_CAPS:
+                    value = value[:_TEXT_CAPS[key]]
         except (ValueError, TypeError):
             continue
         s[key] = value

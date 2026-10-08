@@ -17,6 +17,9 @@ import antinuke
 import backups
 import reactionroles
 import releases
+import more_security
+import community
+import utility
 
 
 class LynxoBot(commands.Bot):
@@ -37,6 +40,9 @@ class LynxoBot(commands.Bot):
         await self.add_cog(backups.Backups(self))
         await self.add_cog(reactionroles.ReactionRoles(self))
         await self.add_cog(releases.ReleaseAlerts(self))
+        await self.add_cog(more_security.MoreSecurity(self))
+        await self.add_cog(community.Community(self))
+        await self.add_cog(utility.Utility(self))
         # Persistent buttons must be re-registered every startup.
         self.add_view(verification.VerifyView(self))
         self.add_view(verification.AdultView(self))
