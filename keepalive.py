@@ -1140,6 +1140,52 @@ async def api_shoutouts_save(request):
                               "shoutouts": _shoutouts_view(guild, cfg)})
 
 
+def _nsfw_scan_view(guild, cfg):
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "channel_ids": [str(c) for c in cfg.get("channel_ids", [])],
+    }
+
+
+@_guard
+async def api_nsfw_scan_get(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("NsfwScan")
+    if cog is None:
+        return web.json_response({"error": "Scanner not loaded."}, status=500)
+    return web.json_response(_nsfw_scan_view(guild, cog._config(guild)))
+
+
+@_guard
+async def api_nsfw_scan_save(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"error": "Body must be JSON."}, status=400)
+    bot = _bot(request)
+    cog = bot.get_cog("NsfwScan")
+    if cog is None:
+        return web.json_response({"error": "Scanner not loaded."}, status=500)
+    cfg = cog._config(guild)
+    cfg["enabled"] = bool(body.get("enabled"))
+    raw_ids = body.get("channel_ids") or []
+    ids = []
+    for cid in raw_ids if isinstance(raw_ids, list) else []:
+        cid = str(cid).strip()
+        if cid.isdigit() and guild.get_channel(int(cid)) is not None:
+            ids.append(int(cid))
+    cfg["channel_ids"] = ids
+    bot.store.save()
+    return web.json_response({"ok": True,
+                              "nsfw_scan": _nsfw_scan_view(guild, cfg)})
+
+
 def _releases_view(cfg):
     recent = cfg.get("announced") or []
     recent = recent[-10:]
@@ -1223,6 +1269,7 @@ _BUILDER_ACTIONS = {
     "rename_channel", "rename_role", "move_channel",
     "config_leveling", "add_level_reward", "remove_level_reward",
     "config_achievements", "add_achievement", "remove_achievement",
+    "config_nsfw_scan",
 }
 
 
@@ -1651,6 +1698,28 @@ async def _builder_run(bot, guild, actions):
                 await mod_log(bot, guild,
                               f"BUILDER — removed achievement "
                               f"'{raw.get('name')}'.")
+            elif act == "config_nsfw_scan":
+                g = bot.store.guild(guild.id)
+                cfg = g.setdefault("nsfw_scan", {})
+                cfg.setdefault("channel_ids", [])
+                if "enabled" in raw:
+                    cfg["enabled"] = bool(raw["enabled"])
+                ch_name = str(raw.get("channel", "") or "").strip()
+                if ch_name:
+                    scan_ch = _builder_find_channel(guild, ch_name, new_channels)
+                    if scan_ch is None:
+                        skipped.append(
+                            f"Could not find channel '{ch_name}' for "
+                            "photo scanning.")
+                        continue
+                    ids = [int(c) for c in cfg.get("channel_ids", [])]
+                    if scan_ch.id not in ids:
+                        ids.append(scan_ch.id)
+                    cfg["channel_ids"] = ids
+                bot.store.save()
+                done.append("Updated the photo scan settings.")
+                await mod_log(bot, guild,
+                              "BUILDER — updated NSFW photo scan settings.")
         except discord.Forbidden:
             skipped.append("Discord wouldn't let me do one change "
                            "(missing permission).")
@@ -1735,6 +1804,8 @@ async def start(port, bot=None):
     app.router.add_get("/api/achievements", api_achievements_get)
     app.router.add_get("/api/shoutouts", api_shoutouts_get)
     app.router.add_post("/api/shoutouts", api_shoutouts_save)
+    app.router.add_get("/api/nsfw-scan", api_nsfw_scan_get)
+    app.router.add_post("/api/nsfw-scan", api_nsfw_scan_save)
     app.router.add_post("/api/achievements", api_achievements_save)
     app.router.add_post("/api/reaction-roles/find", api_reaction_roles_find)
     app.router.add_get("/api/releases", api_releases_get)

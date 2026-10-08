@@ -162,7 +162,9 @@ async def ai_plan_server_edit(prompt):
         '{"action":"add_achievement","name":"Chatterbox",'
         '"description":"Send 100 messages","emoji":"\U0001F4AC",'
         '"type":"messages","threshold":100}\n'
-        '{"action":"remove_achievement","name":"Chatterbox"}\n\n'
+        '{"action":"remove_achievement","name":"Chatterbox"}\n'
+        '{"action":"config_nsfw_scan","enabled":true,'
+        '"channel":"nsfw-pics"}\n\n'
         "Examples:\n"
         "Request: add a text channel called metal-memes\n"
         '[{"action":"create_channel","name":"metal-memes","type":"text"}]\n'
