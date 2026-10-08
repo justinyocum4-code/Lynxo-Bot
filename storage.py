@@ -25,6 +25,18 @@ from config import DEFAULT_SETTINGS
 _WRITE_DEBOUNCE = 5.0  # seconds between Supabase writes for one guild
 
 
+def _default_reaction_roles():
+    return {
+        "channel_id": None,
+        "message_id": None,
+        "title": "Pick your roles",
+        "description": ("Tap a reaction to give yourself that role. "
+                        "Tap it again to remove it."),
+        "color": 16766720,  # gold #FFD700
+        "mappings": [],     # {"emoji": str, "role_id": int, "label": str}
+    }
+
+
 class Store:
     def __init__(self, path="data.json"):
         self.path = path
@@ -114,6 +126,7 @@ class Store:
             "verify": {},        # user_id -> {"fails": int}
             "nuke_whitelist": {"users": [], "roles": []},  # exempt from anti-nuke
             "panic": {},         # saved pre-panic channel overwrites (for /unlock)
+            "reaction_roles": _default_reaction_roles(),
         }
 
     def guild(self, gid):
@@ -125,6 +138,8 @@ class Store:
                 g["settings"].setdefault(k, copy.deepcopy(v))
             g.setdefault("nuke_whitelist", {"users": [], "roles": []})
             g.setdefault("panic", {})
+            if "reaction_roles" not in g:
+                g["reaction_roles"] = _default_reaction_roles()
             return g
 
     def setup_guilds(self):

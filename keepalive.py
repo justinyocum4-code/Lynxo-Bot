@@ -436,6 +436,169 @@ async def api_unlock(request):
     return web.json_response({"ok": True, "message": msg})
 
 
+# ---------------- reaction roles ----------------
+
+def _parse_rr_color(value):
+    """Accept '#FFD700', 'FFD700', or an int. Returns int or None."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value if 0 <= value <= 0xFFFFFF else None
+    s = str(value or "").strip().lstrip("#")
+    if len(s) == 6:
+        try:
+            return int(s, 16)
+        except ValueError:
+            return None
+    return None
+
+
+@_guard
+async def api_channels(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    channels = sorted(
+        (c for c in guild.channels if c.type.name == "text"),
+        key=lambda c: c.position,
+    )
+    return web.json_response({"channels": [
+        {"id": str(c.id), "name": c.name} for c in channels]})
+
+
+@_guard
+async def api_roles(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    roles = [r for r in guild.roles
+             if not r.is_default() and not r.managed]
+    roles.sort(key=lambda r: r.name.lower())
+    return web.json_response({"roles": [
+        {"id": str(r.id), "name": r.name} for r in roles]})
+
+
+def _rr_config_view(guild, cfg):
+    mappings = []
+    for m in cfg.get("mappings", []) or []:
+        role = guild.get_role(int(m.get("role_id", 0)))
+        mappings.append({
+            "emoji": str(m.get("emoji", "")),
+            "role_id": str(m.get("role_id", "")),
+            "label": str(m.get("label", "")),
+            "role_name": role.name if role else None,
+        })
+    return {
+        "channel_id": str(cfg.get("channel_id") or ""),
+        "message_id": str(cfg.get("message_id") or ""),
+        "title": str(cfg.get("title") or ""),
+        "description": str(cfg.get("description") or ""),
+        "color": "#%06X" % (int(cfg.get("color") or 16766720) & 0xFFFFFF),
+        "mappings": mappings,
+    }
+
+
+@_guard
+async def api_reaction_roles_get(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    cfg = _bot(request).store.guild(guild.id)["reaction_roles"]
+    return web.json_response(_rr_config_view(guild, cfg))
+
+
+@_guard
+async def api_reaction_roles_post(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"error": "Body must be JSON."}, status=400)
+    bot = _bot(request)
+
+    channel_id = str(body.get("channel_id") or "").strip()
+    channel = guild.get_channel(int(channel_id)) if channel_id.isdigit() else None
+    if channel is None or channel.type.name != "text":
+        return web.json_response({"error": "Pick a text channel."}, status=400)
+
+    title = str(body.get("title") or "Pick your roles").strip()[:256]
+    description = str(body.get("description") or "").strip()[:2000]
+    color = _parse_rr_color(body.get("color"))
+    if color is None:
+        color = 16766720  # gold
+
+    raw_mappings = body.get("mappings") or []
+    if not isinstance(raw_mappings, list) or len(raw_mappings) > 20:
+        return web.json_response(
+            {"error": "Mappings must be a list of at most 20."}, status=400)
+    mappings = []
+    seen_emoji = set()
+    for m in raw_mappings:
+        if not isinstance(m, dict):
+            continue
+        emoji = str(m.get("emoji", "")).strip()
+        role_id = str(m.get("role_id", "")).strip()
+        label = str(m.get("label", "")).strip()[:100]
+        if not emoji or not role_id.isdigit() or emoji in seen_emoji:
+            continue
+        role = guild.get_role(int(role_id))
+        if role is None or role.is_default() or role.managed:
+            continue
+        if not label:
+            label = role.name
+        seen_emoji.add(emoji)
+        mappings.append({"emoji": emoji, "role_id": int(role_id),
+                         "label": label})
+
+    g = bot.store.guild(guild.id)
+    g["reaction_roles"] = {
+        "channel_id": channel.id,
+        "message_id": g["reaction_roles"].get("message_id"),
+        "title": title,
+        "description": description,
+        "color": color,
+        "mappings": mappings,
+    }
+    bot.store.save()
+    return web.json_response({"ok": True,
+                              "reaction_roles": _rr_config_view(
+                                  guild, g["reaction_roles"])})
+
+
+@_guard
+async def api_reaction_roles_publish(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("ReactionRoles")
+    if cog is None:
+        return web.json_response(
+            {"error": "Reaction roles are not loaded."}, status=500)
+    try:
+        message = await cog.post_reaction_message(guild)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"error": f"Could not post: {e}"},
+                                 status=500)
+    return web.json_response({"ok": True, "message_id": str(message.id)})
+
+
+@_guard
+async def api_reaction_roles_delete(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("ReactionRoles")
+    if cog is None:
+        return web.json_response(
+            {"error": "Reaction roles are not loaded."}, status=500)
+    deleted = await cog.delete_reaction_message(guild)
+    return web.json_response({"ok": True, "deleted": deleted})
+
+
 @web.middleware
 async def cors_middleware(request, handler):
     if request.method == "OPTIONS":
@@ -466,6 +629,12 @@ async def start(port, bot=None):
     app.router.add_get("/api/backups", api_backups)
     app.router.add_post("/api/panic", api_panic)
     app.router.add_post("/api/unlock", api_unlock)
+    app.router.add_get("/api/channels", api_channels)
+    app.router.add_get("/api/roles", api_roles)
+    app.router.add_get("/api/reaction-roles", api_reaction_roles_get)
+    app.router.add_post("/api/reaction-roles", api_reaction_roles_post)
+    app.router.add_post("/api/reaction-roles/post", api_reaction_roles_publish)
+    app.router.add_post("/api/reaction-roles/delete", api_reaction_roles_delete)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)

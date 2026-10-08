@@ -15,6 +15,7 @@ import automod
 import verification
 import antinuke
 import backups
+import reactionroles
 
 
 class LynxoBot(commands.Bot):
@@ -33,6 +34,7 @@ class LynxoBot(commands.Bot):
         await self.add_cog(verification.Verification(self))
         await self.add_cog(antinuke.AntiNuke(self))
         await self.add_cog(backups.Backups(self))
+        await self.add_cog(reactionroles.ReactionRoles(self))
         # Persistent buttons must be re-registered every startup.
         self.add_view(verification.VerifyView(self))
         self.add_view(verification.AdultView(self))
