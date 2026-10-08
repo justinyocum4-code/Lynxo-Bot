@@ -1265,6 +1265,8 @@ async def _builder_run(bot, guild, actions):
     from utils import mod_log
     done, skipped = [], []
     protected_ids = _builder_protected_ids(bot, guild)
+    new_channels = {}
+    new_roles = {}
     for raw in actions[:30]:
         if not isinstance(raw, dict):
             continue
@@ -1298,6 +1300,7 @@ async def _builder_run(bot, guild, actions):
                     ch = await guild.create_text_channel(
                         name, category=cat, reason="Dashboard server builder")
                 done.append(f"Created {ctype} channel #{ch.name}.")
+                new_channels[ch.name.strip().lstrip("#").lower()] = ch
                 await mod_log(bot, guild,
                               f"BUILDER — created {ctype} channel #{ch.name}.")
             elif act == "delete_channel":
