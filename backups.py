@@ -12,16 +12,19 @@ only rebuilds after you press "Yes, restore". Things that already exist
 import io
 import json
 import os
+import sys
 from datetime import datetime, timezone
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from utils import dm_user, mod_log, now_str, user_label
 
 BACKUP_DIR = os.environ.get("BACKUP_PATH", "backups")
 SNAPSHOT_VERSION = 1
+AUTO_BACKUP_KEEP = 3          # how many auto-backup posts to keep per channel
+AUTO_BACKUP_PREFIX = "Automatic backup"
 
 _TYPE_NAMES = {
     discord.ChannelType.text: "text",
@@ -128,6 +131,81 @@ class Backups(commands.Cog):
     def load_snapshot(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    # ---------------- automatic daily backup ----------------
+
+    async def cog_load(self):
+        self.auto_backup_loop.start()
+
+    async def cog_unload(self):
+        self.auto_backup_loop.cancel()
+
+    @tasks.loop(hours=24)
+    async def auto_backup_loop(self):
+        for gid in self.bot.store.setup_guilds():
+            guild = self.bot.get_guild(gid)
+            if guild is None:
+                continue
+            try:
+                await self.run_auto_backup(guild)
+            except Exception as e:  # noqa: BLE001 - one guild must not kill the loop
+                print(f"Backups: automatic backup failed for {guild.name}: {e}",
+                      file=sys.stderr, flush=True)
+
+    @auto_backup_loop.before_loop
+    async def _before_auto_backup(self):
+        await self.bot.wait_until_ready()
+
+    def _auto_backup_channel(self, guild):
+        g = self.bot.store.guild(guild.id)
+        s = g["settings"]
+        cid = s.get("auto_backup_channel_id")
+        ch = guild.get_channel(cid) if cid else None
+        if ch is None:
+            mod_cid = g["channels"].get("mod_logs")
+            ch = guild.get_channel(mod_cid) if mod_cid else None
+        return ch
+
+    async def run_auto_backup(self, guild):
+        """Build a snapshot and post it to the backup channel. No DMs."""
+        g = self.bot.store.guild(guild.id)
+        if not g["settings"].get("auto_backup"):
+            return
+        ch = self._auto_backup_channel(guild)
+        if ch is None:
+            print(f"Backups: no backup channel available in {guild.name}; "
+                  f"skipping automatic backup.", file=sys.stderr, flush=True)
+            return
+        snap = self.build_snapshot(guild, by="Lynxo Bot (automatic backup)")
+        fname, path = self.save_snapshot(guild, snap)
+        caption = (f"{AUTO_BACKUP_PREFIX} — {snap['taken_at']}. "
+                   f"{len(snap['roles'])} roles, {len(snap['channels'])} channels. "
+                   f"Keep this file somewhere safe.")
+        try:
+            await ch.send(caption, file=discord.File(path, filename=fname))
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"Backups: could not post automatic backup in {guild.name}: {e}",
+                  file=sys.stderr, flush=True)
+            return
+        await mod_log(self.bot, guild,
+                      f"AUTO-BACKUP — snapshot {fname} posted in #{ch.name}.")
+        await self._prune_auto_backups(ch)
+
+    async def _prune_auto_backups(self, ch):
+        """Delete the bot's older automatic-backup posts, keeping the newest 3."""
+        try:
+            msgs = [m async for m in ch.history(limit=60)]
+        except (discord.Forbidden, discord.HTTPException):
+            return
+        mine = [m for m in msgs
+                if m.author == self.bot.user
+                and (m.content or "").startswith(AUTO_BACKUP_PREFIX)
+                and m.attachments]
+        for old in mine[AUTO_BACKUP_KEEP:]:
+            try:
+                await old.delete()
+            except (discord.Forbidden, discord.HTTPException):
+                pass
 
     # ---------------- restore ----------------
 

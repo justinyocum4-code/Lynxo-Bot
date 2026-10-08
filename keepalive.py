@@ -25,11 +25,20 @@ import urllib.parse
 import aiohttp
 from aiohttp import web
 
+import discord
+
 from config import DEFAULT_SETTINGS
 
 # Public: the Discord application id for Lynxo Bot. Safe to ship in code.
 DISCORD_CLIENT_ID_FALLBACK = "1557495025921949839"
 SESSION_DAYS = 7
+
+# Sane min/max for integer settings set from the dashboard.
+_INT_BOUNDS = {
+    "new_account_age_days": (1, 90),
+    "copypasta_count": (2, 20),
+    "copypasta_window": (5, 300),
+}
 
 
 def _client_id():
@@ -298,18 +307,40 @@ async def api_settings_put(request):
     for key, value in (body.get("settings") or {}).items():
         if key not in DEFAULT_SETTINGS:
             continue  # unknown keys are ignored, never stored
+        # Backup channel: None/empty means "use the mod-log channel";
+        # otherwise it must be a real text channel in this guild.
+        if key == "auto_backup_channel_id":
+            if value is None or (isinstance(value, str) and not value.strip()):
+                value = None
+            else:
+                try:
+                    cid = int(value)
+                except (ValueError, TypeError):
+                    continue
+                ch = guild.get_channel(cid)
+                if not isinstance(ch, discord.TextChannel):
+                    continue
+                value = cid
+            s[key] = value
+            changed.append(key)
+            continue
         default = DEFAULT_SETTINGS[key]
         try:
             if isinstance(default, bool):
                 value = bool(value)
             elif isinstance(default, int):
                 value = int(value)
+                if key in _INT_BOUNDS:
+                    lo, hi = _INT_BOUNDS[key]
+                    value = max(lo, min(hi, value))
             elif isinstance(default, list):
                 if not isinstance(value, list):
                     continue
             elif isinstance(default, str):
                 value = str(value)
                 if key == "nuke_action" and value not in ("strip", "ban"):
+                    continue
+                if key == "new_account_action" and value not in ("flag", "quarantine"):
                     continue
         except (ValueError, TypeError):
             continue

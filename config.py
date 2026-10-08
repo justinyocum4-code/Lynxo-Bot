@@ -24,6 +24,16 @@ DEFAULT_SETTINGS = {
     "strikes_kick": 3,
     "strikes_ban": 4,
     "escalation_timeout_minutes": 10,
+    # Join security: brand-new accounts
+    "new_account_check": True,     # flag/quarantine accounts younger than X days
+    "new_account_age_days": 7,     # account age threshold in days
+    "new_account_action": "flag",  # "flag" = log it, "quarantine" = isolate them
+    # Ghost pings + copypasta
+    "ghostping_filter": True,      # punish @everyone then delete
+    "copypasta_count": 3,          # identical messages inside the window
+    "copypasta_window": 30,        # seconds
+    # Audit log
+    "audit_log": True,             # log deleted/edited messages to #mod-logs
     # Anti-nuke (Phase 2)
     "nuke_channel_threshold": 3,   # channel creates/deletes inside the window
     "nuke_channel_window": 60,     # seconds
@@ -36,6 +46,9 @@ DEFAULT_SETTINGS = {
     "nuke_action": "strip",        # "strip" = remove all roles, "ban" = ban the offender
     "nuke_auto_restore": True,     # restore from latest backup after a nuke trigger
     "nuke_cooldown_minutes": 5,    # quiet period after a trigger so one incident doesn't spam
+    # Automatic scheduled backups
+    "auto_backup": True,           # take a backup automatically every day
+    "auto_backup_channel_id": None,  # where to post it (None = mod-log channel)
 }
 
 # Regex fragments (case-insensitive) for common scam / phishing lures.

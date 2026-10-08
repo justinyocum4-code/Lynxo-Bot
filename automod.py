@@ -2,7 +2,7 @@
 import hashlib
 import re
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import timedelta
 
 import discord
@@ -17,6 +17,8 @@ INVITE_RE = re.compile(
 )
 LINK_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
+GHOSTPING_TTL = 120  # seconds we remember an @everyone for delete-matching
+
 
 class AutoMod(commands.Cog):
     def __init__(self, bot):
@@ -24,6 +26,10 @@ class AutoMod(commands.Cog):
         # (guild_id, user_id) -> {"ts": float, "score": float, "last_hash": str|None}
         self.heat = defaultdict(lambda: {"ts": 0.0, "score": 0.0, "last_hash": None})
         self.scam_res = [re.compile(p, re.IGNORECASE) for p in SCAM_PATTERNS]
+        # message_id -> (author_id, guild_id, monotonic_time) for ghost-ping matching
+        self._everyone_pings = {}
+        # (guild_id, user_id) -> deque of (content_hash, monotonic_time) for copypasta
+        self._copypasta = defaultdict(deque)
 
     # ---------------- internal helpers ----------------
 
@@ -90,6 +96,9 @@ class AutoMod(commands.Cog):
     async def _filter_action(self, message, reason):
         """Delete the message, warn the user, add a strike, log it."""
         guild, member = message.guild, message.author
+        # If this message was an @everyone ping, drop it from ghost-ping
+        # tracking so the delete event doesn't strike twice.
+        self._everyone_pings.pop(message.id, None)
         try:
             await message.delete()
         except (discord.Forbidden, discord.HTTPException):
@@ -100,6 +109,25 @@ class AutoMod(commands.Cog):
             f"Your message in {guild.name} was removed: {reason}. "
             f"This is strike {n}. Further strikes lead to timeout, kick, then ban.",
         )
+
+    async def quarantine_member(self, guild, member, reason):
+        """Strip a member's roles and isolate them. Returns True on success."""
+        g = self.bot.store.guild(guild.id)
+        qrole_id = g["roles"].get("quarantined")
+        qrole = guild.get_role(qrole_id) if qrole_id else None
+        if qrole is None:
+            return False
+        g["quarantined"][str(member.id)] = [r.id for r in member.roles if not r.is_default()]
+        try:
+            removable = [r for r in member.roles if not r.is_default()]
+            if removable:
+                await member.remove_roles(*removable,
+                                          reason=f"Quarantine: {reason}")
+            await member.add_roles(qrole, reason=f"Quarantine: {reason}")
+        except (discord.Forbidden, discord.HTTPException):
+            return False
+        self.bot.store.save()
+        return True
 
     async def _heat_check(self, message):
         guild, member = message.guild, message.author
@@ -188,6 +216,38 @@ class AutoMod(commands.Cog):
             )
             st["score"] = 0.0
 
+    # ---------------- join listener (new-account check) ----------------
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        if member.bot:
+            return
+        guild = member.guild
+        if member.id == guild.owner_id:
+            return
+        s = self._settings(guild)
+        if not s["new_account_check"]:
+            return
+        try:
+            age_days = (discord.utils.utcnow() - member.created_at).days
+        except Exception:  # noqa: BLE001
+            return
+        if age_days >= s["new_account_age_days"]:
+            return
+        label = user_label(member)
+        if s["new_account_action"] == "quarantine":
+            ok = await self.quarantine_member(
+                guild, member, f"brand-new account ({age_days} days old)")
+            await mod_log(
+                self.bot, guild,
+                f"NEW ACCOUNT — {label} — account is {age_days} day(s) old — "
+                f"{'quarantined' if ok else 'quarantine FAILED, please check manually'}.")
+        else:
+            await mod_log(
+                self.bot, guild,
+                f"NEW ACCOUNT — {label} — account is {age_days} day(s) old. "
+                f"Keep an eye on them.")
+
     # ---------------- message listener ----------------
 
     @commands.Cog.listener()
@@ -200,6 +260,15 @@ class AutoMod(commands.Cog):
         guild = message.guild
         s = self._settings(guild)
         content = message.content or ""
+
+        # Ghost-ping tracking: remember @everyone pings so a quick delete
+        # can be punished. Prune stale entries while we're here.
+        if s["ghostping_filter"] and message.mention_everyone:
+            now = time.monotonic()
+            for mid in [m for m, (_, _, ts) in self._everyone_pings.items()
+                        if now - ts > GHOSTPING_TTL]:
+                self._everyone_pings.pop(mid, None)
+            self._everyone_pings[message.id] = (member.id, guild.id, now)
 
         if s["word_filter"] and self._has_banned_word(s, content):
             await self._filter_action(message, "banned word")
@@ -221,7 +290,87 @@ class AutoMod(commands.Cog):
                 await self._filter_action(message, f"AI flag: {verdict}")
                 return
 
+        if await self._copypasta_check(message):
+            return
+
         await self._heat_check(message)
+
+    def _prune_copypasta(self, key, window):
+        now = time.monotonic()
+        dq = self._copypasta[key]
+        while dq and now - dq[0][1] > window:
+            dq.popleft()
+        return dq
+
+    async def _copypasta_check(self, message):
+        """Strike users who paste the same message over and over. Returns True if acted."""
+        s = self._settings(message.guild)
+        window = s["copypasta_window"]
+        key = (message.guild.id, message.author.id)
+        dq = self._prune_copypasta(key, window)
+        norm = (message.content or "").strip().lower()
+        if len(norm) > 4:
+            digest = hashlib.md5(norm.encode()).hexdigest()
+            dq.append((digest, time.monotonic()))
+            same = sum(1 for h, _ in dq if h == digest)
+            if same >= s["copypasta_count"]:
+                # Clear so one burst doesn't strike repeatedly.
+                dq.clear()
+                await self._filter_action(message, "repeated message spam")
+                return True
+        return False
+
+    # ---------------- delete / edit listeners (ghost ping + audit) ----------------
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message):
+        guild = message.guild
+        if guild is None:
+            return
+        # Ghost ping: an @everyone that was deleted within the window.
+        rec = self._everyone_pings.pop(message.id, None)
+        if rec is not None:
+            author_id, gid, ts = rec
+            if time.monotonic() - ts <= GHOSTPING_TTL and gid == guild.id:
+                member = guild.get_member(author_id)
+                if member is not None and not member.guild_permissions.manage_messages:
+                    await self._filter_action(
+                        message, "ghost ping (@everyone then deleted)")
+                    return  # the strike was logged; skip the plain audit line
+        # Audit log: short plain-words line for any other deleted message.
+        s = self._settings(guild)
+        if not s["audit_log"]:
+            return
+        if message.author == self.bot.user:
+            return
+        content = (message.content or "").strip()
+        if not content:
+            return
+        ch = getattr(message.channel, "name", "a channel")
+        await mod_log(
+            self.bot, guild,
+            f"Message deleted in #{ch} by {user_label(message.author)}: "
+            f"{content[:400]}")
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before, after):
+        guild = after.guild
+        if guild is None:
+            return
+        if after.author == self.bot.user or after.author.bot:
+            return
+        s = self._settings(guild)
+        if not s["audit_log"]:
+            return
+        b = (before.content or "")
+        a = (after.content or "")
+        if b == a:
+            return
+        ch = getattr(after.channel, "name", "a channel")
+        await mod_log(
+            self.bot, guild,
+            f"Message edited in #{ch} by {user_label(after.author)} — "
+            f"before: {b[:300]} / after: {a[:300]}")
 
     # ---------------- mod slash commands ----------------
 
@@ -322,26 +471,13 @@ class AutoMod(commands.Cog):
     @app_commands.checks.has_permissions(manage_roles=True)
     async def quarantine(self, interaction: discord.Interaction,
                         member: discord.Member, reason: str = "No reason given"):
-        guild = interaction.guild
-        g = self.bot.store.guild(guild.id)
-        qrole_id = g["roles"].get("quarantined")
-        qrole = guild.get_role(qrole_id) if qrole_id else None
-        if qrole is None:
+        ok = await self.quarantine_member(interaction.guild, member, reason)
+        if not ok:
             await interaction.response.send_message(
-                "Quarantined role not found — run /setup first.", ephemeral=True)
+                "Could not quarantine — check the Quarantined role exists (run /setup) "
+                "and I can manage that member.", ephemeral=True)
             return
-        g["quarantined"][str(member.id)] = [r.id for r in member.roles if not r.is_default()]
-        try:
-            removable = [r for r in member.roles if not r.is_default()]
-            if removable:
-                await member.remove_roles(*removable,
-                                          reason=f"Quarantine: {reason}")
-            await member.add_roles(qrole, reason=f"Quarantine: {reason}")
-        except (discord.Forbidden, discord.HTTPException) as e:
-            await interaction.response.send_message(f"Could not quarantine: {e}", ephemeral=True)
-            return
-        self.bot.store.save()
-        await mod_log(self.bot, guild,
+        await mod_log(self.bot, interaction.guild,
                       f"QUARANTINE — {user_label(member)} — reason: {reason} — by {interaction.user}")
         await interaction.response.send_message(
             f"{member.mention} quarantined.", ephemeral=True)
