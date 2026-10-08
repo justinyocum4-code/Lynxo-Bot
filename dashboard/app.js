@@ -730,22 +730,90 @@ $("btn-rr-add-row").addEventListener("click", async () => {
   rrSay("Row added. Fill in the emoji, role, and shown name.");
 });
 
+let rrEmbeds = [];
+let rrCurrentId = "";
+function rrFillEmbedForm(embed) {
+  rrCurrentId = embed.id || "";
+  $("rr-name").value = embed.name || "";
+  $("rr-channel").value = embed.channel_id || "";
+  $("rr-title").value = embed.title || "Pick your roles";
+  $("rr-description").value = embed.description || "";
+  $("rr-color").value = embed.color || "#FFD700";
+  $("rr-image-url").value = embed.image_url || "";
+  $("rr-mappings").innerHTML = "";
+  for (const m of embed.mappings) rrAddRow(m);
+  if (embed.message_id) {
+    rrSay("Loaded " + (embed.name || "embed") + ". A message is already posted.");
+  } else {
+    rrSay("Loaded " + (embed.name || "embed") + ". No message posted yet.");
+  }
+}
+function rrRefreshEmbedSelect() {
+  const sel = $("rr-embed-select");
+  const cur = rrCurrentId;
+  sel.innerHTML = "";
+  if (!rrEmbeds.length) {
+    const o = document.createElement("option");
+    o.value = "";
+    o.textContent = "\u2014 no embeds yet \u2014";
+    sel.appendChild(o);
+    return;
+  }
+  for (const e of rrEmbeds) {
+    const o = document.createElement("option");
+    o.value = e.id;
+    o.textContent = (e.name || "Embed") +
+      (e.message_id ? " (posted)" : " (not posted)");
+    sel.appendChild(o);
+  }
+  sel.value = cur || (rrEmbeds[0] && rrEmbeds[0].id) || "";
+}
+$("rr-embed-select").addEventListener("change", () => {
+  const embed = rrEmbeds.find((e) => e.id === $("rr-embed-select").value);
+  if (embed) rrFillEmbedForm(embed);
+});
+$("btn-rr-new").addEventListener("click", () => {
+  rrFillEmbedForm({ id: "", name: "", channel_id: "", title: "Pick your roles",
+    description: "", color: "#FFD700", image_url: "", mappings: [],
+    message_id: "" });
+  rrSay("New embed. Fill it in, then Save.");
+  $("rr-name").focus();
+});
+$("btn-rr-remove").addEventListener("click", async () => {
+  if (!rrCurrentId) { rrSay("Nothing to delete — this embed was never saved."); return; }
+  const embed = rrEmbeds.find((e) => e.id === rrCurrentId);
+  if (!confirm("Delete the embed '" + (embed && embed.name || "embed") +
+               "' and its posted message?")) return;
+  rrSay("Deleting embed…");
+  try {
+    await api("/api/reaction-roles/remove",
+              { method: "POST", body: { id: rrCurrentId } });
+    rrEmbeds = rrEmbeds.filter((e) => e.id !== rrCurrentId);
+    rrRefreshEmbedSelect();
+    const next = rrEmbeds[0];
+    if (next) rrFillEmbedForm(next);
+    else {
+      rrCurrentId = "";
+      $("rr-mappings").innerHTML = "";
+      rrSay("Embed deleted. No embeds left — press New embed.");
+    }
+    toast("Deleted.");
+  } catch (e) { /* say() already ran */ }
+});
 $("btn-rr-load").addEventListener("click", async () => {
   rrSay("Loading reaction roles…");
   try {
     await rrEnsureLists();
     const data = await api("/api/reaction-roles");
-    $("rr-channel").value = data.channel_id || "";
-    $("rr-title").value = data.title || "Pick your roles";
-    $("rr-description").value = data.description || "";
-    $("rr-color").value = data.color || "#FFD700";
-    $("rr-image-url").value = data.image_url || "";
-    $("rr-mappings").innerHTML = "";
-    for (const m of data.mappings) rrAddRow(m);
-    if (data.message_id) {
-      rrSay("Loaded. A message is already posted (id " + data.message_id + ").");
-    } else {
-      rrSay("Loaded. No message posted yet — press “Post / update message”.");
+    rrEmbeds = data.embeds || [];
+    rrRefreshEmbedSelect();
+    const first = rrEmbeds.find((e) => e.id === $("rr-embed-select").value) ||
+      rrEmbeds[0];
+    if (first) rrFillEmbedForm(first);
+    else {
+      rrCurrentId = "";
+      $("rr-mappings").innerHTML = "";
+      rrSay("No embeds yet — press New embed to create one.");
     }
   } catch (e) { /* say() already ran */ }
 });
@@ -768,6 +836,8 @@ $("btn-rr-save").addEventListener("click", async () => {
     const data = await api("/api/reaction-roles", {
       method: "POST",
       body: {
+        id: rrCurrentId,
+        name: $("rr-name").value.trim(),
         channel_id: $("rr-channel").value,
         title: $("rr-title").value,
         description: $("rr-description").value,
@@ -776,7 +846,13 @@ $("btn-rr-save").addEventListener("click", async () => {
         mappings,
       },
     });
-    rrSay("Saved " + data.reaction_roles.mappings.length + " role mapping(s).");
+    const saved = data.embed;
+    const ix = rrEmbeds.findIndex((e) => e.id === saved.id);
+    if (ix >= 0) rrEmbeds[ix] = saved; else rrEmbeds.push(saved);
+    rrCurrentId = saved.id;
+    rrRefreshEmbedSelect();
+    rrSay("Saved " + saved.mappings.length + " role mapping(s) in " +
+      (saved.name || "embed") + ".");
     toast("Saved.");
   } catch (e) { /* say() already ran */ }
 });
@@ -784,7 +860,9 @@ $("btn-rr-save").addEventListener("click", async () => {
 $("btn-rr-post").addEventListener("click", async () => {
   rrSay("Posting…");
   try {
-    const data = await api("/api/reaction-roles/post", { method: "POST", body: {} });
+    if (!rrCurrentId) { rrSay("Save the embed first."); return; }
+    const data = await api("/api/reaction-roles/post",
+      { method: "POST", body: { id: rrCurrentId } });
     rrSay("Message posted (id " + data.message_id + ").");
     toast("Posted.");
   } catch (e) { /* say() already ran */ }
@@ -794,7 +872,9 @@ $("btn-rr-delete").addEventListener("click", async () => {
   if (!confirm("Delete the posted reaction-role message?")) return;
   rrSay("Deleting…");
   try {
-    const data = await api("/api/reaction-roles/delete", { method: "POST", body: {} });
+    if (!rrCurrentId) { rrSay("Nothing to delete."); return; }
+    const data = await api("/api/reaction-roles/delete",
+      { method: "POST", body: { id: rrCurrentId } });
     rrSay(data.deleted ? "Message deleted." : "No posted message to delete.");
     toast(data.deleted ? "Deleted." : "Nothing to delete.");
   } catch (e) { /* say() already ran */ }

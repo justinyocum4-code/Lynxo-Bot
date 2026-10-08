@@ -173,7 +173,24 @@
       <button id="btn-rr-load" type="button">Load reaction roles</button>
     </div>
     <fieldset>
+      <legend>Embeds</legend>
+      <label>Choose embed
+        <select id="rr-embed-select" aria-label="Choose reaction role embed">
+          <option value="">— press “Load reaction roles” —</option>
+        </select>
+      </label>
+      <div class="row">
+        <button id="btn-rr-new" type="button">New embed</button>
+        <button id="btn-rr-remove" type="button" class="danger">Delete this embed</button>
+      </div>
+    </fieldset>
+    <fieldset>
       <legend>Message</legend>
+      <label>Embed name
+        <input id="rr-name" type="text" maxlength="100" autocomplete="off"
+               placeholder="Genre Roles" aria-label="Embed name">
+      </label>
+      <p class="muted">A short name so you can tell your embeds apart.</p>
       <label>Channel
         <select id="rr-channel" aria-label="Channel for the reaction role message">
           <option value="">— press “Load reaction roles” —</option>
