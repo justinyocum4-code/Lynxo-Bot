@@ -1,4 +1,5 @@
 """Verification: /setup, persistent buttons, regular + 18+ flows."""
+import hashlib
 import io
 import random
 
@@ -6,11 +7,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from ai import ai_vision_scan
 from utils import dm_user, mod_log, now_str, user_label
 from vision import check_selfie
 
 VERIFY_BUTTON_ID = "lynxo_verify_regular"
 ADULT_BUTTON_ID = "lynxo_verify_adult"
+REVIEW_APPROVE_ID = "lynxo_review_approve"
+REVIEW_DENY_ID = "lynxo_review_deny"
+REVIEW_AISCAN_ID = "lynxo_review_aiscan"
 PHOTO_TIMEOUT = 300  # seconds to send the selfie in DMs
 
 
@@ -74,6 +79,122 @@ class AdultView(discord.ui.View):
     async def adult(self, interaction: discord.Interaction, button: discord.ui.Button):
         cog = self.bot.get_cog("Verification")
         await cog.start_adult_flow(interaction)
+
+
+def _is_mod(interaction):
+    """Same bar as /approve18 and /deny18 (manage_messages)."""
+    user = interaction.user
+    return (isinstance(user, discord.Member)
+            and user.guild_permissions.manage_messages)
+
+
+class ReviewView(discord.ui.View):
+    """Persistent Approve / Deny / AI Scan buttons on 18+ review posts."""
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    def _lookup(self, interaction):
+        g = self.bot.store.guild(interaction.guild.id)
+        rec = g["verify_reviews"].get(str(interaction.message.id))
+        return rec
+
+    async def _lock_decisions(self, interaction, note):
+        """Disable Approve/Deny after a decision; AI Scan stays available."""
+        view = ReviewView(self.bot)
+        for child in view.children:
+            if child.custom_id in (REVIEW_APPROVE_ID, REVIEW_DENY_ID):
+                child.disabled = True
+        try:
+            base = interaction.message.content or ""
+            await interaction.message.edit(
+                content=base + f"\n{note}", view=view)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    @discord.ui.button(label="Approve", emoji="✅",
+                       style=discord.ButtonStyle.success,
+                       custom_id=REVIEW_APPROVE_ID)
+    async def approve(self, interaction: discord.Interaction,
+                      button: discord.ui.Button):
+        if not _is_mod(interaction):
+            await interaction.response.send_message(
+                "Mods only.", ephemeral=True)
+            return
+        rec = self._lookup(interaction)
+        if rec is None:
+            await interaction.response.send_message(
+                "This review post isn't tracked anymore — use /approve18.",
+                ephemeral=True)
+            return
+        member = interaction.guild.get_member(int(rec["user_id"]))
+        if member is None:
+            await interaction.response.send_message(
+                "That user isn't in the server anymore.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        cog = self.bot.get_cog("Verification")
+        await cog._grant_adult(
+            interaction.guild, member,
+            f"approved by {interaction.user} via review button")
+        await dm_user(
+            member,
+            f"Your 18+ verification in {interaction.guild.name} was approved.")
+        await self._lock_decisions(
+            interaction, f"Decided: approved by {interaction.user}.")
+        await interaction.followup.send(
+            f"{member.mention} approved for 18+.", ephemeral=True)
+
+    @discord.ui.button(label="Deny", emoji="❌",
+                       style=discord.ButtonStyle.danger,
+                       custom_id=REVIEW_DENY_ID)
+    async def deny(self, interaction: discord.Interaction,
+                   button: discord.ui.Button):
+        if not _is_mod(interaction):
+            await interaction.response.send_message(
+                "Mods only.", ephemeral=True)
+            return
+        rec = self._lookup(interaction)
+        if rec is None:
+            await interaction.response.send_message(
+                "This review post isn't tracked anymore — use /deny18.",
+                ephemeral=True)
+            return
+        member = interaction.guild.get_member(int(rec["user_id"]))
+        if member is None:
+            await interaction.response.send_message(
+                "That user isn't in the server anymore.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        cog = self.bot.get_cog("Verification")
+        await cog._record_fail(
+            interaction.guild, member,
+            f"denied by {interaction.user} via review button")
+        await dm_user(
+            member,
+            f"Your 18+ photo in {interaction.guild.name} was denied. "
+            f"You can try again with the Verify 18+ button.")
+        await self._lock_decisions(
+            interaction, f"Decided: denied by {interaction.user}.")
+        await interaction.followup.send(
+            f"{member.mention} denied.", ephemeral=True)
+
+    @discord.ui.button(label="AI Scan", emoji="🔍",
+                       style=discord.ButtonStyle.secondary,
+                       custom_id=REVIEW_AISCAN_ID)
+    async def aiscan(self, interaction: discord.Interaction,
+                     button: discord.ui.Button):
+        if not _is_mod(interaction):
+            await interaction.response.send_message(
+                "Mods only.", ephemeral=True)
+            return
+        rec = self._lookup(interaction)
+        if rec is None:
+            await interaction.response.send_message(
+                "This review post isn't tracked anymore.", ephemeral=True)
+            return
+        cog = self.bot.get_cog("Verification")
+        await cog.run_ai_scan(interaction, rec)
 
 
 class Verification(commands.Cog):
@@ -278,17 +399,100 @@ class Verification(commands.Cog):
         text = (
             f"18+ REVIEW — {user_label(member)}\n"
             f"Expected fingers: **{number}**\n"
-            f"Prior failed attempts: {fails}\n"
-            f"A mod can approve with /approve18 or deny with /deny18."
+            f"Prior failed attempts: {fails}"
         )
         file = discord.File(io.BytesIO(image_bytes), filename=attachment.filename)
         if ch:
             try:
-                await ch.send(text, file=file)
+                sent = await ch.send(text, file=file,
+                                     view=ReviewView(self.bot))
+                reviews = g["verify_reviews"]
+                reviews[str(sent.id)] = {
+                    "user_id": str(member.id),
+                    "expected": number,
+                }
+                # Prune oldest entries so the registry can't grow forever.
+                while len(reviews) > 200:
+                    reviews.pop(next(iter(reviews)))
+                self.bot.store.save()
             except (discord.Forbidden, discord.HTTPException):
                 pass
         await mod_log(self.bot, guild,
                       f"18+ PHOTO — {user_label(member)} sent a selfie (expected {number} fingers) for review.")
+
+    async def run_ai_scan(self, interaction, rec):
+        """Duplicate-photo check + Groq vision scan, posted as a reply.
+
+        Advisory only — never approves or denies on its own.
+        """
+        await interaction.response.defer()  # public "thinking" in the mod channel
+        msg = interaction.message
+        attachment = next(
+            (a for a in msg.attachments
+             if (a.content_type or "").startswith("image/")), None)
+        if attachment is None:
+            await msg.reply("AI scan: no photo attached to this review post.",
+                            mention_author=False)
+            return
+        try:
+            image_bytes = await attachment.read()
+        except discord.HTTPException:
+            await msg.reply("AI scan: couldn't download the photo.",
+                            mention_author=False)
+            return
+
+        # 1. Duplicate check: has this exact photo been submitted before?
+        sha = hashlib.sha256(image_bytes).hexdigest()
+        g = self.bot.store.guild(interaction.guild.id)
+        hashes = g["verify_photo_hashes"]
+        uid = str(rec["user_id"])
+        prev = hashes.get(sha)
+        if prev is None:
+            dup_line = ("Duplicate check: this photo has not been submitted "
+                        "before.")
+        elif prev == uid:
+            dup_line = ("Duplicate check: this is the same photo this user "
+                        "submitted before — not a red flag on its own.")
+        else:
+            dup_line = (f"Duplicate check: RED FLAG — this exact photo was "
+                        f"already submitted by a different user (id {prev}). "
+                        f"Possible photo reuse.")
+        hashes[sha] = uid
+        while len(hashes) > 2000:
+            hashes.pop(next(iter(hashes)))
+        self.bot.store.save()
+
+        # 2. Vision scan (advisory).
+        prompt = (
+            "You are an advisory assistant helping a human moderator review "
+            "an 18+ verification selfie for a Discord server. You do NOT make "
+            "the final decision — a human moderator does.\n"
+            f"The person was asked to take a selfie holding up "
+            f"{rec.get('expected', '?')} finger(s).\n"
+            "Reply in short plain-words bullet points, no more than 8 lines:\n"
+            "- Signs this looks AI-generated vs a genuine photo (be specific "
+            "about artifacts: hands, fingers, skin, background, lighting).\n"
+            "- Does it look like a real selfie of a person? (yes / no / "
+            "uncertain)\n"
+            "- Apparent age: ADULT, MINOR, or UNCERTAIN. Say UNCERTAIN unless "
+            "the person is clearly an adult or clearly a minor."
+        )
+        note = await ai_vision_scan(
+            image_bytes, attachment.content_type or "image/jpeg", prompt)
+        if note:
+            ai_part = "AI notes:\n" + note
+        else:
+            ai_part = ("AI notes: unavailable right now (no vision access) — "
+                       "the duplicate check above still stands.")
+
+        member = interaction.guild.get_member(int(uid))
+        who = user_label(member) if member else f"user id {uid}"
+        await msg.reply(
+            f"🔍 AI SCAN — {who}\n"
+            f"{dup_line}\n"
+            f"{ai_part}\n"
+            f"This is advisory — you make the final call.",
+            mention_author=False)
 
     async def _record_fail(self, guild, member, why):
         g = self.bot.store.guild(guild.id)

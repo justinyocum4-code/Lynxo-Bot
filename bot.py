@@ -46,6 +46,7 @@ class LynxoBot(commands.Bot):
         # Persistent buttons must be re-registered every startup.
         self.add_view(verification.VerifyView(self))
         self.add_view(verification.AdultView(self))
+        self.add_view(verification.ReviewView(self))
         port = int(os.environ.get("PORT", "8000"))
         self._health_runner = await keepalive.start(port, self)
 

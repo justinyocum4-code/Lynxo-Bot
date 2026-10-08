@@ -133,6 +133,8 @@ class Store:
             "strikes": {},       # user_id -> {"count": int, "history": [...]}
             "quarantined": {},   # user_id -> [role ids to restore]
             "verify": {},        # user_id -> {"fails": int}
+            "verify_reviews": {},  # review message_id -> {"user_id": str, "expected": int}
+            "verify_photo_hashes": {},  # sha256 hex -> user_id (duplicate-photo check)
             "nuke_whitelist": {"users": [], "roles": []},  # exempt from anti-nuke
             "panic": {},         # saved pre-panic channel overwrites (for /unlock)
             "reaction_roles": _default_reaction_roles(),
@@ -148,6 +150,8 @@ class Store:
                 g["settings"].setdefault(k, copy.deepcopy(v))
             g.setdefault("nuke_whitelist", {"users": [], "roles": []})
             g.setdefault("panic", {})
+            g.setdefault("verify_reviews", {})
+            g.setdefault("verify_photo_hashes", {})
             if "reaction_roles" not in g:
                 g["reaction_roles"] = _default_reaction_roles()
             if "releases" not in g:
