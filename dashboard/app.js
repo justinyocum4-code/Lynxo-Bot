@@ -300,7 +300,34 @@ $("btn-refresh-backups").addEventListener("click", async () => {
 
 /* ---------- reaction roles ---------- */
 
-let rrRoles = [];       // [{id, name}] from /api/roles
+function colorWord(hex) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || "");
+  if (!m) return "a color";
+  const r = parseInt(m[1].slice(0, 2), 16) / 255;
+  const g = parseInt(m[1].slice(2, 4), 16) / 255;
+  const b = parseInt(m[1].slice(4, 6), 16) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  const l = (mx + mn) / 2;
+  if (l > 0.92) return "white";
+  if (l < 0.08) return "black";
+  if (mx - mn < 0.12) return "gray";
+  const d = mx - mn;
+  let h;
+  if (mx === r) h = ((g - b) / d) % 6;
+  else if (mx === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  if (h < 15 || h >= 345) return "red";
+  if (h < 45) return "orange";
+  if (h < 75) return "yellow";
+  if (h < 155) return "green";
+  if (h < 195) return "teal";
+  if (h < 255) return "blue";
+  if (h < 285) return "purple";
+  return "pink";
+}
+
+let rrRoles = [];       // [{id, name, color, position}] from /api/roles
 let rrListsLoaded = false;
 
 function rrSay(msg) {
@@ -339,7 +366,7 @@ function rrFillRoleSelect(sel, selectedId) {
   for (const r of rrRoles) {
     const o = document.createElement("option");
     o.value = r.id;
-    o.textContent = r.name;
+    o.textContent = r.name + (r.color ? " (" + colorWord(r.color) + ")" : "");
     if (r.id === selectedId) o.selected = true;
     sel.appendChild(o);
   }
@@ -470,5 +497,26 @@ $("btn-rr-delete").addEventListener("click", async () => {
   try {
     const data = await api("/api/reaction-roles/delete", { method: "POST", body: {} });
     rrSay(data.deleted ? "Message deleted." : "No posted message to delete.");
+  } catch (e) { /* say() already ran */ }
+});
+
+$("btn-mycolor").addEventListener("click", async () => {
+  $("mycolor-result").textContent = "Checking your name color…";
+  try {
+    const data = await api("/api/mycolor");
+    let msg;
+    if (data.display_color && data.display_role) {
+      msg = "Your name should appear in " + colorWord(data.display_color) +
+        ", from the " + data.display_role + " role.";
+    } else {
+      msg = "None of your roles have a color, so your name shows in white.";
+    }
+    if (data.roles && data.roles.length) {
+      const bits = data.roles.map((r) =>
+        r.name + " (" + (r.color ? colorWord(r.color) : "no color") + ")");
+      msg += " Your roles, top to bottom: " + bits.join(", ") + ".";
+    }
+    $("mycolor-result").textContent = msg;
+    say(msg);
   } catch (e) { /* say() already ran */ }
 });
