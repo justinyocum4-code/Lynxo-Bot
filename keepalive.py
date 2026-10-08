@@ -1129,7 +1129,7 @@ async def _builder_run(bot, guild, actions):
                 await mod_log(bot, guild,
                               f"BUILDER — moved #{ch.name} {where}.")
             elif act == "config_leveling":
-                g = _bot(request).store.guild(guild.id)
+                g = bot.store.guild(guild.id)
                 s = g["settings"]
                 if "enabled" in raw:
                     s["leveling_enabled"] = bool(raw["enabled"])
@@ -1142,7 +1142,7 @@ async def _builder_run(bot, guild, actions):
                             "level-up messages.")
                         continue
                     s["levelup_channel_id"] = lch.id
-                _bot(request).store.save()
+                bot.store.save()
                 done.append("Updated the leveling settings.")
                 await mod_log(bot, guild, "BUILDER — updated leveling settings.")
             elif act == "add_level_reward":
@@ -1158,10 +1158,10 @@ async def _builder_run(bot, guild, actions):
                     skipped.append(
                         f"Could not find role '{raw.get('role')}'.")
                     continue
-                g = _bot(request).store.guild(guild.id)
+                g = bot.store.guild(guild.id)
                 lr = g["settings"].setdefault("level_roles", {})
                 lr[str(level)] = role.id
-                _bot(request).store.save()
+                bot.store.save()
                 done.append(
                     f"Level {level} now grants the {role.name} role.")
                 await mod_log(bot, guild,
@@ -1172,11 +1172,11 @@ async def _builder_run(bot, guild, actions):
                     level = int(raw.get("level", 0))
                 except (TypeError, ValueError):
                     level = 0
-                g = _bot(request).store.guild(guild.id)
+                g = bot.store.guild(guild.id)
                 lr = g["settings"].setdefault("level_roles", {})
                 if str(level) in lr:
                     del lr[str(level)]
-                    _bot(request).store.save()
+                    bot.store.save()
                     done.append(f"Removed the level {level} reward.")
                     await mod_log(bot, guild,
                                   f"BUILDER — removed level {level} reward.")
