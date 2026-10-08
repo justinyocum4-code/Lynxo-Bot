@@ -174,17 +174,45 @@ async function checkLogin() {
 
 const SETTING_FIELDS = [
   "word_filter", "invite_filter", "link_filter", "massping_filter", "ai_moderation",
+  "audit_log",
+  "new_account_check", "new_account_age_days", "new_account_action",
+  "ghostping_filter", "copypasta_count", "copypasta_window",
   "raid_join_threshold", "raid_join_window",
   "spam_warn_heat", "spam_timeout_heat",
   "strikes_timeout", "strikes_kick", "strikes_ban",
   "nuke_channel_threshold", "nuke_auto_restore", "nuke_action",
+  "auto_backup", "auto_backup_channel_id",
 ];
+
+let backupChannelsLoaded = false;
+
+async function backupEnsureChannels() {
+  if (backupChannelsLoaded) return;
+  const data = await api("/api/channels");
+  const sel = $("set-auto_backup_channel_id");
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = "";
+  const def = document.createElement("option");
+  def.value = "";
+  def.textContent = "Mod-log channel";
+  sel.appendChild(def);
+  for (const c of data.channels) {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = "#" + c.name;
+    sel.appendChild(o);
+  }
+  sel.value = current;
+  backupChannelsLoaded = true;
+}
 
 function fillSettings(s) {
   for (const name of SETTING_FIELDS) {
     const el = $("set-" + name);
     if (!el || !(name in s)) continue;
     if (el.type === "checkbox") el.checked = !!s[name];
+    else if (s[name] == null) el.value = "";
     else el.value = s[name];
   }
 }
@@ -192,6 +220,7 @@ function fillSettings(s) {
 $("btn-load-settings").addEventListener("click", async () => {
   say("Loading settings…");
   try {
+    await backupEnsureChannels();
     const data = await api("/api/settings");
     fillSettings(data.settings);
     say("Settings loaded for " + data.guild.name + ".");

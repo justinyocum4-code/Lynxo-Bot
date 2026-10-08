@@ -52,6 +52,18 @@
       <label class="check"><input type="checkbox" id="set-link_filter"> Block ALL links</label>
       <label class="check"><input type="checkbox" id="set-massping_filter"> Block @everyone / @here from regular members</label>
       <label class="check"><input type="checkbox" id="set-ai_moderation"> AI moderation (needs a Groq key on the bot)</label>
+      <label class="check"><input type="checkbox" id="set-audit_log"> Log deleted and edited messages to #mod-logs</label>
+    </fieldset>
+    <fieldset>
+      <legend>Join security</legend>
+      <label class="check"><input type="checkbox" id="set-new_account_check"> Watch for brand-new accounts joining</label>
+      <label>Flag accounts younger than (days) <input type="number" id="set-new_account_age_days" min="1" max="90"></label>
+      <label>What to do with brand-new accounts
+        <select id="set-new_account_action">
+          <option value="flag">Flag them in the mod log</option>
+          <option value="quarantine">Quarantine them</option>
+        </select>
+      </label>
     </fieldset>
     <fieldset>
       <legend>Raid and spam</legend>
@@ -59,6 +71,9 @@
       <label>Raid count window (seconds) <input type="number" id="set-raid_join_window" min="5" max="300"></label>
       <label>Spam score that warns <input type="number" id="set-spam_warn_heat" min="1" max="50"></label>
       <label>Spam score that times out <input type="number" id="set-spam_timeout_heat" min="1" max="100"></label>
+      <label class="check"><input type="checkbox" id="set-ghostping_filter"> Punish @everyone pings that get deleted (ghost pings)</label>
+      <label>Identical messages that trigger copypasta filter <input type="number" id="set-copypasta_count" min="2" max="20"></label>
+      <label>Copypasta count window (seconds) <input type="number" id="set-copypasta_window" min="5" max="300"></label>
     </fieldset>
     <fieldset>
       <legend>Strikes (how many for each punishment)</legend>
@@ -74,6 +89,15 @@
         <select id="set-nuke_action">
           <option value="strip">Strip all their roles</option>
           <option value="ban">Ban them</option>
+        </select>
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>Automatic backups</legend>
+      <label class="check"><input type="checkbox" id="set-auto_backup"> Take a backup automatically every day</label>
+      <label>Post automatic backups in
+        <select id="set-auto_backup_channel_id">
+          <option value="">Mod-log channel</option>
         </select>
       </label>
     </fieldset>
