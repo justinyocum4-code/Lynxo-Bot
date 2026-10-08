@@ -1180,7 +1180,7 @@ def _builder_norm(name):
     return re.sub(r"[^a-z0-9\-_ ]", "", name).strip()
 
 
-def _builder_find_channel(guild, name):
+def _builder_find_channel(guild, name, extra=None):
     name = (name or "").strip().lstrip("#").lower()
     if not name:
         return None
@@ -1196,7 +1196,7 @@ def _builder_find_channel(guild, name):
     return None
 
 
-def _builder_find_role(guild, name):
+def _builder_find_role(guild, name, extra=None):
     name = (name or "").strip().lower()
     if not name:
         return None
@@ -1278,7 +1278,7 @@ async def _builder_run(bot, guild, actions):
                 if not name or ctype not in ("text", "voice", "category"):
                     skipped.append("Skipped making a channel: bad name or type.")
                     continue
-                if _builder_find_channel(guild, name):
+                if _builder_find_channel(guild, name, new_channels):
                     skipped.append(f"Channel #{name} already exists.")
                     continue
                 cat = None
@@ -1301,7 +1301,7 @@ async def _builder_run(bot, guild, actions):
                 await mod_log(bot, guild,
                               f"BUILDER — created {ctype} channel #{ch.name}.")
             elif act == "delete_channel":
-                ch = _builder_find_channel(guild, raw.get("name"))
+                ch = _builder_find_channel(guild, raw.get("name"), new_channels)
                 if ch is None:
                     skipped.append(
                         f"Could not find channel '{raw.get('name')}'.")
@@ -1321,7 +1321,7 @@ async def _builder_run(bot, guild, actions):
                 if not name:
                     skipped.append("Skipped making a role: no name given.")
                     continue
-                if _builder_find_role(guild, name):
+                if _builder_find_role(guild, name, new_roles):
                     skipped.append(f"Role '{name}' already exists.")
                     continue
                 color = _builder_color(raw.get("color"))
@@ -1335,10 +1335,11 @@ async def _builder_run(bot, guild, actions):
                         f"the color '{raw.get('color')}' so it has no color.")
                 else:
                     done.append(f"Created role {role.name}.")
+                new_roles[role.name.strip().lower()] = role
                 await mod_log(bot, guild,
                               f"BUILDER — created role {role.name}.")
             elif act == "delete_role":
-                role = _builder_find_role(guild, raw.get("name"))
+                role = _builder_find_role(guild, raw.get("name"), new_roles)
                 locked = _builder_role_locked(guild, role, protected_ids)
                 if locked:
                     skipped.append(locked)
@@ -1349,7 +1350,7 @@ async def _builder_run(bot, guild, actions):
                 await mod_log(bot, guild,
                               f"BUILDER — deleted role {rname}.")
             elif act == "set_role_color":
-                role = _builder_find_role(guild, raw.get("name"))
+                role = _builder_find_role(guild, raw.get("name"), new_roles)
                 locked = _builder_role_locked(guild, role, protected_ids)
                 if locked:
                     skipped.append(locked)
@@ -1366,8 +1367,8 @@ async def _builder_run(bot, guild, actions):
                               f"BUILDER — set role {role.name} color to "
                               f"{raw.get('color')}.")
             elif act == "set_channel_perms":
-                ch = _builder_find_channel(guild, raw.get("channel"))
-                role = _builder_find_role(guild, raw.get("role"))
+                ch = _builder_find_channel(guild, raw.get("channel"), new_channels)
+                role = _builder_find_role(guild, raw.get("role"), new_roles)
                 if ch is None:
                     skipped.append(
                         f"Could not find channel '{raw.get('channel')}'.")
@@ -1406,7 +1407,7 @@ async def _builder_run(bot, guild, actions):
                               f"BUILDER — set {role.name} permissions in "
                               f"#{ch.name}.")
             elif act == "rename_channel":
-                ch = _builder_find_channel(guild, raw.get("name"))
+                ch = _builder_find_channel(guild, raw.get("name"), new_channels)
                 new_name = str(raw.get("new_name", "")).strip().lstrip("#")
                 if ch is None:
                     skipped.append(
@@ -1421,7 +1422,7 @@ async def _builder_run(bot, guild, actions):
                 await mod_log(bot, guild,
                               f"BUILDER — renamed channel #{old} to #{ch.name}.")
             elif act == "rename_role":
-                role = _builder_find_role(guild, raw.get("name"))
+                role = _builder_find_role(guild, raw.get("name"), new_roles)
                 new_name = str(raw.get("new_name", "")).strip()
                 if role is None:
                     skipped.append(
@@ -1440,7 +1441,7 @@ async def _builder_run(bot, guild, actions):
                 await mod_log(bot, guild,
                               f"BUILDER — renamed role {old} to {role.name}.")
             elif act == "move_channel":
-                ch = _builder_find_channel(guild, raw.get("name"))
+                ch = _builder_find_channel(guild, raw.get("name"), new_channels)
                 cat_name = str(raw.get("category", "") or "").strip()
                 if ch is None:
                     skipped.append(
@@ -1468,7 +1469,7 @@ async def _builder_run(bot, guild, actions):
                     s["leveling_enabled"] = bool(raw["enabled"])
                 lch_name = str(raw.get("levelup_channel", "") or "").strip()
                 if lch_name:
-                    lch = _builder_find_channel(guild, lch_name)
+                    lch = _builder_find_channel(guild, lch_name, new_channels)
                     if lch is None:
                         skipped.append(
                             f"Could not find channel '{lch_name}' for "
@@ -1483,7 +1484,7 @@ async def _builder_run(bot, guild, actions):
                     level = int(raw.get("level", 0))
                 except (TypeError, ValueError):
                     level = 0
-                role = _builder_find_role(guild, raw.get("role"))
+                role = _builder_find_role(guild, raw.get("role"), new_roles)
                 if not (1 <= level <= 100):
                     skipped.append("Level must be a number from 1 to 100.")
                     continue
@@ -1523,7 +1524,7 @@ async def _builder_run(bot, guild, actions):
                     cfg["enabled"] = bool(raw["enabled"])
                 ach_name = str(raw.get("announce_channel", "") or "").strip()
                 if ach_name:
-                    ach_ch = _builder_find_channel(guild, ach_name)
+                    ach_ch = _builder_find_channel(guild, ach_name, new_channels)
                     if ach_ch is None:
                         skipped.append(
                             f"Could not find channel '{ach_name}' for "
