@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="side-menu"><span aria-hidden="true">☰</span> Menu</button>
 <header>
   <h1>Lynxo Bot Dashboard</h1>
   <p>Control your Discord server's security bot from here.</p>
@@ -14,7 +15,6 @@
 
 <div id="status" role="status" aria-live="polite" class="status">Not connected yet.</div>
 
-<div class="layout">
 <nav id="side-menu" aria-label="Dashboard sections">
   <button type="button" data-tab="connect" aria-current="page">Connect</button>
   <button type="button" data-tab="settings">Settings</button>
@@ -25,6 +25,7 @@
   <button type="button" data-tab="backups">Backups</button>
   <button type="button" data-tab="newreleases">New Releases</button>
 </nav>
+<div id="menu-scrim" hidden></div>
 
 <main>
   <section id="tab-connect" aria-labelledby="h-connect">
@@ -195,7 +196,6 @@
     <p id="rel-status" class="muted" role="status"></p>
   </section>
 </main>
-</div>
 
 <footer>
   <p class="muted">Lynxo Bot dashboard. You log in with Discord — only the server owner can use this page.</p>

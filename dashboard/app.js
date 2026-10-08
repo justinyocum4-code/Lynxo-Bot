@@ -62,8 +62,40 @@ function showTab(name) {
 }
 
 for (const btn of document.querySelectorAll("#side-menu button")) {
-  btn.addEventListener("click", () => showTab(btn.dataset.tab));
+  btn.addEventListener("click", () => { showTab(btn.dataset.tab); closeMenu(); });
 }
+
+/* ---------- menu drawer ---------- */
+
+function isMenuOpen() {
+  return $("side-menu").classList.contains("open");
+}
+
+function openMenu() {
+  $("side-menu").classList.add("open");
+  $("menu-scrim").hidden = false;
+  $("menu-toggle").setAttribute("aria-expanded", "true");
+  const first = document.querySelector("#side-menu button");
+  if (first) first.focus();
+}
+
+function closeMenu() {
+  if (!isMenuOpen()) return;
+  $("side-menu").classList.remove("open");
+  $("menu-scrim").hidden = true;
+  const t = $("menu-toggle");
+  t.setAttribute("aria-expanded", "false");
+  t.focus();
+}
+
+$("menu-toggle").addEventListener("click", () => {
+  if (isMenuOpen()) closeMenu();
+  else openMenu();
+});
+$("menu-scrim").addEventListener("click", closeMenu);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isMenuOpen()) closeMenu();
+});
 
 /* ---------- connect ---------- */
 
