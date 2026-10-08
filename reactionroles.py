@@ -1,6 +1,9 @@
 """Reaction roles: members tap a reaction on a bot-posted message to
-give themselves (or remove) a role. Configured from the dashboard."""
+give themselves (or remove) a role. Configured from the dashboard.
+Supports multiple embeds per server."""
 import sys
+import time
+import uuid
 
 import discord
 from discord.ext import commands
@@ -13,12 +16,36 @@ class ReactionRoles(commands.Cog):
     def _config(self, guild):
         g = self.bot.store.guild(guild.id)
         cfg = g.get("reaction_roles") or {}
-        if not isinstance(cfg.get("mappings"), list):
-            cfg["mappings"] = []
+        # Migrate old single-embed format to the embeds list.
+        if "embeds" not in cfg:
+            embeds = []
+            if cfg.get("channel_id") or cfg.get("mappings"):
+                embeds.append({
+                    "id": str(uuid.uuid4()),
+                    "name": "Reaction Roles",
+                    "channel_id": cfg.get("channel_id"),
+                    "message_id": cfg.get("message_id"),
+                    "title": cfg.get("title"),
+                    "description": cfg.get("description"),
+                    "color": cfg.get("color"),
+                    "image_url": cfg.get("image_url"),
+                    "mappings": cfg.get("mappings") or [],
+                })
+            cfg = {"embeds": embeds}
+            g["reaction_roles"] = cfg
+            self.bot.store.save()
+        if not isinstance(cfg.get("embeds"), list):
+            cfg["embeds"] = []
         return cfg
 
-    def _find_mapping(self, cfg, emoji_str):
-        for m in cfg.get("mappings", []):
+    def _get_embed(self, cfg, embed_id):
+        for e in cfg.get("embeds", []):
+            if str(e.get("id")) == str(embed_id):
+                return e
+        return None
+
+    def _find_mapping(self, embed, emoji_str):
+        for m in embed.get("mappings", []):
             if str(m.get("emoji", "")) == emoji_str:
                 return m
         return None
@@ -49,9 +76,14 @@ class ReactionRoles(commands.Cog):
         if guild is None:
             return
         cfg = self._config(guild)
-        if not cfg.get("message_id") or payload.message_id != cfg["message_id"]:
+        embed = None
+        for e in cfg.get("embeds", []):
+            if e.get("message_id") and payload.message_id == e["message_id"]:
+                embed = e
+                break
+        if embed is None:
             return
-        mapping = self._find_mapping(cfg, str(payload.emoji))
+        mapping = self._find_mapping(embed, str(payload.emoji))
         if mapping is None:
             return
         role = guild.get_role(int(mapping.get("role_id", 0)))
@@ -75,46 +107,53 @@ class ReactionRoles(commands.Cog):
                   f"{member} in {guild.name}: {e}", file=sys.stderr,
                   flush=True)
 
-    async def post_reaction_message(self, guild):
-        """Post (or update) the reaction-role embed. Returns the message."""
-        cfg = self._config(guild)
-        channel_id = cfg.get("channel_id")
-        channel = guild.get_channel(channel_id) if channel_id else None
-        if channel is None:
-            raise ValueError("No reaction-role channel is set.")
+    def _build_embed(self, guild, embed):
         lines = []
-        for m in cfg.get("mappings", []):
+        for m in embed.get("mappings", []):
             label = str(m.get("label") or "").strip()
             role = guild.get_role(int(m.get("role_id", 0)))
             if not label and role is not None:
                 label = role.name
             lines.append(f"{m.get('emoji')} — {label or 'role'}")
-        description = str(cfg.get("description") or "")
+        description = str(embed.get("description") or "")
         if lines:
             description = (description + "\n\n" + "\n".join(lines)).strip()
-        embed = discord.Embed(
-            title=str(cfg.get("title") or "Pick your roles"),
+        emb = discord.Embed(
+            title=str(embed.get("title") or "Pick your roles"),
             description=description or "Tap a reaction to pick a role.",
-            color=int(cfg.get("color") or 16766720),
+            color=int(embed.get("color") or 16766720),
         )
-        image_url = str(cfg.get("image_url") or "").strip()
+        image_url = str(embed.get("image_url") or "").strip()
         if image_url:
-            embed.set_image(url=image_url)
+            emb.set_image(url=image_url)
+        return emb
+
+    async def post_reaction_message(self, guild, embed_id):
+        """Post (or update) one reaction-role embed. Returns the message."""
+        cfg = self._config(guild)
+        embed = self._get_embed(cfg, embed_id)
+        if embed is None:
+            raise ValueError("Embed not found.")
+        channel_id = embed.get("channel_id")
+        channel = guild.get_channel(channel_id) if channel_id else None
+        if channel is None:
+            raise ValueError("No reaction-role channel is set.")
+        emb = self._build_embed(guild, embed)
         message = None
-        if cfg.get("message_id"):
+        if embed.get("message_id"):
             try:
-                message = await channel.fetch_message(cfg["message_id"])
+                message = await channel.fetch_message(embed["message_id"])
             except (discord.NotFound, discord.HTTPException):
                 message = None
         if message is None:
-            message = await channel.send(embed=embed)
+            message = await channel.send(embed=emb)
         else:
-            await message.edit(embed=embed)
+            await message.edit(embed=emb)
         try:
             await message.clear_reactions()
         except (discord.Forbidden, discord.HTTPException):
             pass
-        for m in cfg.get("mappings", []):
+        for m in embed.get("mappings", []):
             emoji = str(m.get("emoji", "")).strip()
             if not emoji:
                 continue
@@ -124,18 +163,21 @@ class ReactionRoles(commands.Cog):
                     discord.InvalidArgument) as e:
                 print(f"ReactionRoles: could not add reaction {emoji!r} in "
                       f"{guild.name}: {e}", file=sys.stderr, flush=True)
-        cfg["message_id"] = message.id
+        embed["message_id"] = message.id
         self.bot.store.save()
         return message
 
-    async def delete_reaction_message(self, guild):
-        """Delete the posted message (if any) and clear the stored id."""
+    async def delete_reaction_message(self, guild, embed_id):
+        """Delete one embed's posted message (if any) and clear its id."""
         cfg = self._config(guild)
-        message_id = cfg.get("message_id")
+        embed = self._get_embed(cfg, embed_id)
+        if embed is None:
+            return False
+        message_id = embed.get("message_id")
         if not message_id:
             return False
-        channel = (guild.get_channel(cfg["channel_id"])
-                   if cfg.get("channel_id") else None)
+        channel = (guild.get_channel(embed["channel_id"])
+                   if embed.get("channel_id") else None)
         deleted = False
         if channel is not None:
             try:
@@ -145,6 +187,24 @@ class ReactionRoles(commands.Cog):
             except (discord.NotFound, discord.Forbidden,
                     discord.HTTPException):
                 pass
-        cfg["message_id"] = None
+        embed["message_id"] = None
         self.bot.store.save()
         return deleted
+
+    def remove_embed(self, guild, embed_id):
+        """Remove an embed config entirely. Returns True if removed."""
+        cfg = self._config(guild)
+        before = len(cfg.get("embeds", []))
+        cfg["embeds"] = [e for e in cfg.get("embeds", [])
+                         if str(e.get("id")) != str(embed_id)]
+        if len(cfg["embeds"]) != before:
+            self.bot.store.save()
+            return True
+        return False
+
+    def new_embed_id(self):
+        return str(uuid.uuid4())
+
+    def touch(self, guild):
+        """Ensure migration ran; returns the config."""
+        return self._config(guild)

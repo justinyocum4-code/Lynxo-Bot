@@ -651,9 +651,9 @@ async def api_mycolor(request):
     })
 
 
-def _rr_config_view(guild, cfg):
+def _rr_embed_view(guild, embed):
     mappings = []
-    for m in cfg.get("mappings", []) or []:
+    for m in embed.get("mappings", []) or []:
         role = guild.get_role(int(m.get("role_id", 0)))
         mappings.append({
             "emoji": str(m.get("emoji", "")),
@@ -662,14 +662,21 @@ def _rr_config_view(guild, cfg):
             "role_name": role.name if role else None,
         })
     return {
-        "channel_id": str(cfg.get("channel_id") or ""),
-        "message_id": str(cfg.get("message_id") or ""),
-        "title": str(cfg.get("title") or ""),
-        "description": str(cfg.get("description") or ""),
-        "color": "#%06X" % (int(cfg.get("color") or 16766720) & 0xFFFFFF),
-        "image_url": str(cfg.get("image_url") or ""),
+        "id": str(embed.get("id") or ""),
+        "name": str(embed.get("name") or "Reaction Roles"),
+        "channel_id": str(embed.get("channel_id") or ""),
+        "message_id": str(embed.get("message_id") or ""),
+        "title": str(embed.get("title") or ""),
+        "description": str(embed.get("description") or ""),
+        "color": "#%06X" % (int(embed.get("color") or 16766720) & 0xFFFFFF),
+        "image_url": str(embed.get("image_url") or ""),
         "mappings": mappings,
     }
+
+
+def _rr_config_view(guild, cfg):
+    return {"embeds": [_rr_embed_view(guild, e)
+                       for e in cfg.get("embeds", [])]}
 
 
 @_guard
@@ -677,7 +684,9 @@ async def api_reaction_roles_get(request):
     guild = _guild(request)
     if guild is None:
         return web.json_response({"error": "No server found."}, status=404)
-    cfg = _bot(request).store.guild(guild.id)["reaction_roles"]
+    bot = _bot(request)
+    cog = bot.get_cog("ReactionRoles")
+    cfg = cog.touch(guild) if cog else {"embeds": []}
     return web.json_response(_rr_config_view(guild, cfg))
 
 
@@ -691,12 +700,34 @@ async def api_reaction_roles_post(request):
     except Exception:  # noqa: BLE001
         return web.json_response({"error": "Body must be JSON."}, status=400)
     bot = _bot(request)
+    cog = bot.get_cog("ReactionRoles")
+    if cog is None:
+        return web.json_response(
+            {"error": "Reaction roles are not loaded."}, status=500)
+    cfg = cog.touch(guild)
+
+    embed_id = str(body.get("id") or "").strip()
+    embed = cog._get_embed(cfg, embed_id) if embed_id else None
+    if embed is None:
+        embed = {
+            "id": cog.new_embed_id(),
+            "name": "Reaction Roles",
+            "channel_id": None,
+            "message_id": None,
+            "title": "Pick your roles",
+            "description": "",
+            "color": 16766720,
+            "image_url": "",
+            "mappings": [],
+        }
+        cfg["embeds"].append(embed)
 
     channel_id = str(body.get("channel_id") or "").strip()
     channel = guild.get_channel(int(channel_id)) if channel_id.isdigit() else None
     if channel is None or channel.type.name != "text":
         return web.json_response({"error": "Pick a text channel."}, status=400)
 
+    name = str(body.get("name") or "Reaction Roles").strip()[:100]
     title = str(body.get("title") or "Pick your roles").strip()[:256]
     description = str(body.get("description") or "").strip()[:2000]
     color = _parse_rr_color(body.get("color"))
@@ -731,20 +762,18 @@ async def api_reaction_roles_post(request):
         mappings.append({"emoji": emoji, "role_id": int(role_id),
                          "label": label})
 
-    g = bot.store.guild(guild.id)
-    g["reaction_roles"] = {
+    embed.update({
+        "name": name,
         "channel_id": channel.id,
-        "message_id": g["reaction_roles"].get("message_id"),
         "title": title,
         "description": description,
         "color": color,
         "image_url": image_url,
         "mappings": mappings,
-    }
+    })
     bot.store.save()
     return web.json_response({"ok": True,
-                              "reaction_roles": _rr_config_view(
-                                  guild, g["reaction_roles"])})
+                              "embed": _rr_embed_view(guild, embed)})
 
 
 @_guard
@@ -758,7 +787,14 @@ async def api_reaction_roles_publish(request):
         return web.json_response(
             {"error": "Reaction roles are not loaded."}, status=500)
     try:
-        message = await cog.post_reaction_message(guild)
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    embed_id = str(body.get("id") or "").strip()
+    if not embed_id:
+        return web.json_response({"error": "Missing embed id."}, status=400)
+    try:
+        message = await cog.post_reaction_message(guild, embed_id)
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=400)
     except Exception as e:  # noqa: BLE001
@@ -777,8 +813,38 @@ async def api_reaction_roles_delete(request):
     if cog is None:
         return web.json_response(
             {"error": "Reaction roles are not loaded."}, status=500)
-    deleted = await cog.delete_reaction_message(guild)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    embed_id = str(body.get("id") or "").strip()
+    if not embed_id:
+        return web.json_response({"error": "Missing embed id."}, status=400)
+    deleted = await cog.delete_reaction_message(guild, embed_id)
     return web.json_response({"ok": True, "deleted": deleted})
+
+
+@_guard
+async def api_reaction_roles_remove(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("ReactionRoles")
+    if cog is None:
+        return web.json_response(
+            {"error": "Reaction roles are not loaded."}, status=500)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    embed_id = str(body.get("id") or "").strip()
+    if not embed_id:
+        return web.json_response({"error": "Missing embed id."}, status=400)
+    # Delete the posted message first, then remove the config.
+    await cog.delete_reaction_message(guild, embed_id)
+    removed = cog.remove_embed(guild, embed_id)
+    return web.json_response({"ok": True, "removed": removed})
 
 
 def _releases_view(cfg):
@@ -1285,6 +1351,7 @@ async def start(port, bot=None):
     app.router.add_post("/api/reaction-roles", api_reaction_roles_post)
     app.router.add_post("/api/reaction-roles/post", api_reaction_roles_publish)
     app.router.add_post("/api/reaction-roles/delete", api_reaction_roles_delete)
+    app.router.add_post("/api/reaction-roles/remove", api_reaction_roles_remove)
     app.router.add_get("/api/releases", api_releases_get)
     app.router.add_post("/api/releases", api_releases_post)
     app.router.add_post("/api/releases/check", api_releases_check)
