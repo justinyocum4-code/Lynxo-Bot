@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lynxo Bot Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Lynxo Bot Dashboard</h1>
+  <p>Control your Discord server's security bot from here.</p>
+</header>
+<div id="status" role="status" aria-live="polite" class="status">Not connected yet.</div>
+<main>
+  <section aria-labelledby="h-connect">
+    <h2 id="h-connect">Connect</h2>
+    <p>Enter these once — this page remembers them on your device.</p>
+    <label for="api-base">Bot address
+      <input id="api-base" type="url" inputmode="url" placeholder="https://lynxo-bot.onrender.com" autocomplete="off">
+    </label>
+    <label for="api-key">Dashboard key
+      <input id="api-key" type="password" placeholder="The DASHBOARD_KEY from Render" autocomplete="off">
+    </label>
+    <div class="row">
+      <button id="btn-save-creds" type="button">Save</button>
+      <button id="btn-test" type="button">Test connection</button>
+    </div>
+    <p id="server-info" class="muted"></p>
+  </section>
+  <section aria-labelledby="h-settings">
+    <h2 id="h-settings">Settings</h2>
+    <div class="row">
+      <button id="btn-load-settings" type="button">Load current settings</button>
+    </div>
+    <fieldset>
+      <legend>Filters</legend>
+      <label class="check"><input type="checkbox" id="set-word_filter"> Bad-word filter</label>
+      <label class="check"><input type="checkbox" id="set-invite_filter"> Block Discord invite links</label>
+      <label class="check"><input type="checkbox" id="set-link_filter"> Block ALL links</label>
+      <label class="check"><input type="checkbox" id="set-massping_filter"> Block @everyone / @here from regular members</label>
+      <label class="check"><input type="checkbox" id="set-ai_moderation"> AI moderation (needs a Groq key on the bot)</label>
+    </fieldset>
+    <fieldset>
+      <legend>Raid and spam</legend>
+      <label>Joins that trigger raid lockdown <input type="number" id="set-raid_join_threshold" min="2" max="50"></label>
+      <label>Raid count window (seconds) <input type="number" id="set-raid_join_window" min="5" max="300"></label>
+      <label>Spam score that warns <input type="number" id="set-spam_warn_heat" min="1" max="50"></label>
+      <label>Spam score that times out <input type="number" id="set-spam_timeout_heat" min="1" max="100"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Strikes (how many for each punishment)</legend>
+      <label>Strikes for timeout <input type="number" id="set-strikes_timeout" min="1" max="10"></label>
+      <label>Strikes for kick <input type="number" id="set-strikes_kick" min="1" max="10"></label>
+      <label>Strikes for ban <input type="number" id="set-strikes_ban" min="1" max="10"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Anti-nuke</legend>
+      <label>Channel changes that trigger it <input type="number" id="set-nuke_channel_threshold" min="2" max="20"></label>
+      <label class="check"><input type="checkbox" id="set-nuke_auto_restore"> Auto-restore the latest backup after an attack</label>
+      <label>Punishment for attackers
+        <select id="set-nuke_action">
+          <option value="strip">Strip all their roles</option>
+          <option value="ban">Ban them</option>
+        </select>
+      </label>
+    </fieldset>
+    <div class="row">
+      <button id="btn-save-settings" type="button">Save settings</button>
+    </div>
+  </section>
+  <section aria-labelledby="h-log">
+    <h2 id="h-log">Mod log</h2>
+    <p>Newest actions the bot took, in plain words.</p>
+    <div class="row">
+      <button id="btn-refresh-log" type="button">Refresh log</button>
+    </div>
+    <ul id="log-list" class="loglist" aria-label="Moderation log"></ul>
+  </section>
+  <section aria-labelledby="h-user">
+    <h2 id="h-user">User lookup</h2>
+    <p>Find a member's strikes by their Discord user ID.</p>
+    <label for="lookup-id">User ID
+      <input id="lookup-id" type="text" inputmode="numeric" placeholder="123456789012345678" autocomplete="off">
+    </label>
+    <div class="row">
+      <button id="btn-lookup" type="button">Look up</button>
+      <button id="btn-clear-strikes" type="button" disabled>Clear their strikes</button>
+    </div>
+    <div id="lookup-result" class="muted"></div>
+  </section>
+  <section aria-labelledby="h-panic">
+    <h2 id="h-panic">Emergency</h2>
+    <p>Lock the server down fast. Unlock restores everything.</p>
+    <div class="row">
+      <button id="btn-panic" type="button" class="danger">Panic — lock text channels</button>
+    </div>
+    <div class="row">
+      <button id="btn-lockdown" type="button" class="danger">Lockdown — freeze text AND voice</button>
+    </div>
+    <div class="row">
+      <button id="btn-unlock" type="button">Unlock — back to normal</button>
+    </div>
+  </section>
+  <section aria-labelledby="h-backup">
+    <h2 id="h-backup">Backups</h2>
+    <p>A backup saves your channels and roles. Keep the downloaded file somewhere safe.</p>
+    <div class="row">
+      <button id="btn-backup-now" type="button">Back up now</button>
+      <button id="btn-refresh-backups" type="button">Refresh backup list</button>
+    </div>
+    <ul id="backup-list" class="loglist" aria-label="Saved backups"></ul>
+  </section>
+</main>
+<footer>
+  <p class="muted">Lynxo Bot dashboard. Your key never leaves your device except to talk to your bot.</p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
