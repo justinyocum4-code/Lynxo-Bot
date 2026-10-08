@@ -25,6 +25,15 @@ from config import DEFAULT_SETTINGS
 _WRITE_DEBOUNCE = 5.0  # seconds between Supabase writes for one guild
 
 
+def _default_releases():
+    return {
+        "enabled": False,
+        "channel_id": None,
+        "announced": [],   # [{"id": mbid, "title": str, "artist": str}]
+        "last_check": None,
+    }
+
+
 def _default_reaction_roles():
     return {
         "channel_id": None,
@@ -127,6 +136,7 @@ class Store:
             "nuke_whitelist": {"users": [], "roles": []},  # exempt from anti-nuke
             "panic": {},         # saved pre-panic channel overwrites (for /unlock)
             "reaction_roles": _default_reaction_roles(),
+            "releases": _default_releases(),
         }
 
     def guild(self, gid):
@@ -140,6 +150,8 @@ class Store:
             g.setdefault("panic", {})
             if "reaction_roles" not in g:
                 g["reaction_roles"] = _default_reaction_roles()
+            if "releases" not in g:
+                g["releases"] = _default_releases()
             return g
 
     def setup_guilds(self):

@@ -646,6 +646,72 @@ async def api_reaction_roles_delete(request):
     return web.json_response({"ok": True, "deleted": deleted})
 
 
+def _releases_view(cfg):
+    recent = cfg.get("announced") or []
+    recent = recent[-10:]
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "channel_id": (str(cfg["channel_id"])
+                       if cfg.get("channel_id") else None),
+        "last_check": cfg.get("last_check"),
+        "recent": [{"title": a.get("title", ""),
+                    "artist": a.get("artist", "")} for a in recent],
+    }
+
+
+@_guard
+async def api_releases_get(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    cfg = _bot(request).store.guild(guild.id)["releases"]
+    return web.json_response(_releases_view(cfg))
+
+
+@_guard
+async def api_releases_post(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"error": "Bad request."}, status=400)
+    channel_id = body.get("channel_id")
+    channel = None
+    if channel_id:
+        try:
+            channel = guild.get_channel(int(channel_id))
+        except (ValueError, TypeError):
+            channel = None
+        if channel is None or channel.type.name != "text":
+            return web.json_response(
+                {"error": "Pick a real text channel."}, status=400)
+    cfg = _bot(request).store.guild(guild.id)["releases"]
+    cfg["enabled"] = bool(body.get("enabled"))
+    cfg["channel_id"] = int(channel_id) if channel_id else None
+    _bot(request).store.save()
+    return web.json_response({"ok": True})
+
+
+@_guard
+async def api_releases_check(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("ReleaseAlerts")
+    if cog is None:
+        return web.json_response(
+            {"error": "Release alerts are not loaded."}, status=500)
+    try:
+        posted = await cog.run_check(guild)
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"error": f"Could not check: {e}"},
+                                 status=500)
+    return web.json_response({"ok": True, "posted": posted})
+
+
 @web.middleware
 async def cors_middleware(request, handler):
     if request.method == "OPTIONS":
@@ -683,6 +749,9 @@ async def start(port, bot=None):
     app.router.add_post("/api/reaction-roles", api_reaction_roles_post)
     app.router.add_post("/api/reaction-roles/post", api_reaction_roles_publish)
     app.router.add_post("/api/reaction-roles/delete", api_reaction_roles_delete)
+    app.router.add_get("/api/releases", api_releases_get)
+    app.router.add_post("/api/releases", api_releases_post)
+    app.router.add_post("/api/releases/check", api_releases_check)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
