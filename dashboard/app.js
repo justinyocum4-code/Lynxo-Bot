@@ -5,14 +5,14 @@ function say(msg) { $("status").textContent = msg; }
 function creds() {
   return {
     base: (localStorage.getItem("lynxo_api_base") || "").replace(/\/$/, ""),
-    key: localStorage.getItem("lynxo_api_key") || "",
+    key: localStorage.getItem("lynxo_session") || "",
   };
 }
 async function api(path, opts) {
   opts = opts || {};
   const c = creds();
   if (!c.base || !c.key) {
-    say("Enter your bot address and dashboard key above, then press Save.");
+    say("Log in with Discord above first.");
     throw new Error("not connected");
   }
   let res;
@@ -37,29 +37,65 @@ async function api(path, opts) {
   }
   return data;
 }
-$("btn-save-creds").addEventListener("click", () => {
-  localStorage.setItem("lynxo_api_base", $("api-base").value.trim());
-  localStorage.setItem("lynxo_api_key", $("api-key").value.trim());
-  say("Saved. Press Test connection to check it.");
+function saveBase() {
+  const base = $("api-base").value.trim().replace(/\/$/, "");
+  localStorage.setItem("lynxo_api_base", base);
+  return base;
+}
+$("btn-discord-login").addEventListener("click", async () => {
+  const base = saveBase();
+  if (!base) { say("Type your bot's address first."); return; }
+  say("Opening Discord login…");
+  try {
+    const res = await fetch(base + "/api/oauth/start");
+    const data = await res.json();
+    if (!res.ok || !data.url) {
+      say(data.error || "The bot did not offer a login link. It may be asleep — try again in a minute.");
+      return;
+    }
+    window.location.href = data.url;
+  } catch (e) {
+    say("Could not reach the bot. Check the address — the bot may be asleep; try again in a minute.");
+  }
 });
-$("btn-test").addEventListener("click", async () => {
-  say("Testing…");
+async function checkLogin() {
+  say("Checking login…");
   try {
     const data = await api("/api/health");
     const g = data.guilds[0];
+    const who = data.discord_user ? "Logged in as " + data.discord_user.username + ". " : "";
     if (g) {
-      $("server-info").textContent = "Connected to " + g.name + " (" + g.members + " members).";
-      say("Connected to " + g.name + ".");
+      $("server-info").textContent = who + "Connected to " + g.name + " (" + g.members + " members).";
+      say(who + "Connected to " + g.name + ".");
     } else {
-      say("Connected, but the bot has no server set up yet. Run /setup in Discord first.");
+      say(who + "Connected, but the bot has no server set up yet. Run /setup in Discord first.");
     }
   } catch (e) {}
-});
-(function restoreCreds() {
+}
+(function handleReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const session = params.get("session");
+  const error = params.get("error");
+  if (session || error) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+  if (session) {
+    localStorage.setItem("lynxo_session", session);
+    checkLogin();
+    return;
+  }
+  if (error === "not_owner") {
+    say("That Discord account isn't the server owner, so it can't open this dashboard.");
+    return;
+  }
+  if (error) {
+    say("Discord login didn't finish. Press “Log in with Discord” to try again.");
+    return;
+  }
   $("api-base").value = localStorage.getItem("lynxo_api_base") || "";
-  $("api-key").value = localStorage.getItem("lynxo_api_key") || "";
-  if ($("api-base").value && $("api-key").value) {
-    say("Welcome back. Press Test connection to reconnect.");
+  if ($("api-base").value && localStorage.getItem("lynxo_session")) {
+    say("Welcome back. Checking your saved login…");
+    checkLogin();
   }
 })();
 const SETTING_FIELDS = [
@@ -189,7 +225,7 @@ $("btn-refresh-backups").addEventListener("click", async () => {
     const ul = $("backup-list");
     ul.innerHTML = "";
     if (!data.backups.length) {
-      ul.innerHTML = "<li>No backups on the bot. Press Back up now.</li>";
+      ul.innerHTML = "<li>No backups on the bot. Press “Back up now”.</li>";
     }
     for (const b of data.backups) {
       const li = document.createElement("li");
