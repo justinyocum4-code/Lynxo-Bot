@@ -260,15 +260,15 @@ async function ensureAllChannelSelects() {
 
 function fillSettings(s) {
   for (const name of SETTING_FIELDS) {
+    if (name === "level_roles") {
+      if (name in s) renderLevelRewardRows(s[name] || {});
+      continue;
+    }
     const el = $("set-" + name);
     if (!el || !(name in s)) continue;
     if (el.type === "checkbox") { el.checked = !!s[name]; continue; }
     if (name in DICT_TEXTAREAS) {
       el.value = dictToTextarea(s[name], DICT_TEXTAREAS[name]);
-      continue;
-    }
-    if (name === "level_roles") {
-      renderLevelRewardRows(s[name] || {});
       continue;
     }
     if (s[name] == null) el.value = "";
