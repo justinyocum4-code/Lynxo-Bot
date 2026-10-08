@@ -114,6 +114,14 @@ Then save. The bot cannot see joins or scan messages without them.
      "Reset Secret" if none is shown, then copy it. It stays secret.
    - `DASHBOARD_URL` — you can leave this empty; it defaults to the
      GitHub Pages dashboard.
+   - `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` — strongly recommended.
+     These move the bot's memory (settings, strikes, verification,
+     anti-nuke whitelist, panic state) into your Supabase database so a
+     redeploy never wipes it. Find them in the Supabase dashboard: open
+     your project, go to Project Settings -> API, copy the Project URL
+     and the service_role key (NOT the anon key). Without them the bot
+     falls back to `data.json`, which Render erases on every restart —
+     meaning you'd have to run `/setup` again each time.
 4. In the Discord developer portal, register the login redirect: open
    your application, go to OAuth2, and under Redirects add exactly:
    `https://lynxo-bot.onrender.com/api/oauth/callback`
@@ -158,10 +166,13 @@ Never put your real token in any file you share or upload.
 
 ## Notes and limits
 
-- Settings, strikes, and verification state are kept in a small `data.json`
-  file. Render's free disk wipes on restart, so treat it as temporary.
-  Backups you download from `/backup` (or the dashboard) are the durable
-  copies — keep them.
+- Durable storage: set `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (see
+  Setup step 4) and the bot keeps settings, strikes, verification state,
+  the anti-nuke whitelist, and panic state in your Supabase database —
+  they survive Render redeploys and restarts. Without them it falls back
+  to a local `data.json` file, which Render's free disk wipes on every
+  restart, so you'd have to run `/setup` again. Backups you download
+  from `/backup` (or the dashboard) are extra-durable copies — keep them.
 - The 18+ photo check is human-reviewed in Phase 1. The code has a clean
   `vision.py` stub ready for an AI vision provider in a later phase.
 - Slash commands can take up to an hour to appear the very first time;
