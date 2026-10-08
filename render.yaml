@@ -18,5 +18,9 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      - key: DASHBOARD_KEY
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DASHBOARD_URL
         sync: false

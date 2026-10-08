@@ -1,42 +1,120 @@
 """HTTP server: /health plus the dashboard JSON API (Phase 3).
 
-Every /api/* endpoint requires the header
-    Authorization: Bearer <DASHBOARD_KEY>
-If DASHBOARD_KEY is not set on Render, the API answers 503 (disabled) and
-only /health keeps working.
+Dashboard login is "Log in with Discord" (OAuth2):
+  1. The dashboard page calls GET /api/oauth/start -> {url}.
+  2. The user approves on discord.com and lands on /api/oauth/callback.
+  3. The bot checks the Discord user id against the server owner id
+     (or the /nuke exempt user whitelist) and, if allowed, mints a
+     session token and redirects back to the dashboard page with it.
 
+Every other /api/* endpoint then accepts
+    Authorization: Bearer <session token>
+The old DASHBOARD_KEY still works as a fallback if it is set.
+If NEITHER DISCORD_CLIENT_SECRET nor DASHBOARD_KEY is set, /api/*
+(except /api/health and /api/oauth/*) answers 503 "not configured".
+
+Sessions live in memory only: a bot restart logs everyone out.
 CORS is wide open (*) so the static dashboard on GitHub Pages can call it.
 """
 import json
 import os
+import secrets
+import time
+import urllib.parse
 
+import aiohttp
 from aiohttp import web
 
 from config import DEFAULT_SETTINGS
 
+# Public: the Discord application id for Lynxo Bot. Safe to ship in code.
+DISCORD_CLIENT_ID_FALLBACK = "1557495025921949839"
+SESSION_DAYS = 7
 
-def _api_key():
+
+def _client_id():
+    return os.environ.get("DISCORD_CLIENT_ID") or DISCORD_CLIENT_ID_FALLBACK
+
+
+def _client_secret():
+    return os.environ.get("DISCORD_CLIENT_SECRET") or ""
+
+
+def _legacy_key():
     return os.environ.get("DASHBOARD_KEY") or ""
 
 
+def _dashboard_configured():
+    return bool(_client_secret()) or bool(_legacy_key())
+
+
+def _dashboard_url():
+    base = (os.environ.get("DASHBOARD_URL")
+            or "https://justinyocum4-code.github.io/Lynxo-Bot/dashboard/").strip()
+    return base.rstrip("/")
+
+
+def _redirect_uri(request):
+    # Built from the request's own host so it keeps working if the
+    # Render URL ever changes. This exact URL must be registered in the
+    # Discord developer portal under OAuth2 -> Redirects.
+    return f"https://{request.host}/api/oauth/callback"
+
+
+def _sessions(request):
+    return request.app["sessions"]
+
+
+def _prune_sessions(request):
+    now = time.time()
+    sessions = _sessions(request)
+    for tok in [t for t, s in sessions.items() if s["expires"] < now]:
+        sessions.pop(tok, None)
+
+
+def _session_for(request):
+    """Return the session dict for a valid Bearer session token, else None."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    tok = auth[len("Bearer "):].strip()
+    if not tok:
+        return None
+    _prune_sessions(request)
+    sess = _sessions(request).get(tok)
+    if not sess or sess["expires"] < time.time():
+        _sessions(request).pop(tok, None)
+        return None
+    return sess
+
+
 def _authed(request):
-    key = _api_key()
-    if not key:
-        return False, "disabled"
-    return request.headers.get("Authorization", "") == f"Bearer {key}", "bad key"
+    """(ok, why, session_or_None). why is 'ok', 'disabled', or 'bad'."""
+    sess = _session_for(request)
+    if sess is not None:
+        return True, "ok", sess
+    key = _legacy_key()
+    if key and request.headers.get("Authorization", "") == f"Bearer {key}":
+        return True, "ok", None
+    if not _dashboard_configured():
+        return False, "disabled", None
+    return False, "bad", None
 
 
 def _guard(handler):
     async def wrapper(request):
-        ok, why = _authed(request)
+        ok, why, sess = _authed(request)
         if not ok:
             if why == "disabled":
                 return web.json_response(
-                    {"error": "Dashboard API is disabled. Set DASHBOARD_KEY in "
-                              "the Render environment to turn it on."},
+                    {"error": "Dashboard login is not configured. Set "
+                              "DISCORD_CLIENT_SECRET in the Render environment "
+                              "to turn it on."},
                     status=503)
             return web.json_response(
-                {"error": "Wrong or missing dashboard key."}, status=401)
+                {"error": "You are not logged in. Log in with Discord on "
+                          "the dashboard page first."}, status=401)
+        request["dash_session"] = sess  # None for legacy-key logins
         try:
             return await handler(request)
         except web.HTTPException:
@@ -64,25 +142,130 @@ def _guild(request):
     return bot.get_guild(ids[0]) if ids else None
 
 
+def _user_allowed(bot, user_id):
+    """True if this Discord user id is the server owner or whitelisted."""
+    try:
+        uid = int(user_id)
+    except (ValueError, TypeError):
+        return False
+    for gid in bot.store.setup_guilds():
+        guild = bot.get_guild(gid)
+        if guild is not None and guild.owner_id == uid:
+            return True
+        wl = (bot.store.guild(gid).get("nuke_whitelist", {}) or {})
+        if uid in (wl.get("users") or []):
+            return True
+    return False
+
+
 # ---------------- public ----------------
 
 async def _health(request):
     return web.Response(text="ok")
 
 
+# ---------------- Discord OAuth ----------------
+
+async def oauth_start(request):
+    """Public. Returns the Discord authorize URL for 'Log in with Discord'."""
+    redirect_uri = _redirect_uri(request)
+    params = {
+        "client_id": _client_id(),
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "identify",
+    }
+    url = "https://discord.com/oauth2/authorize?" + urllib.parse.urlencode(params)
+    return web.json_response({"url": url, "redirect_uri": redirect_uri})
+
+
+async def oauth_callback(request):
+    """Public. Handles Discord's redirect, mints a session, bounces home."""
+    dash = _dashboard_url()
+    code = request.query.get("code", "")
+    if request.query.get("error") or not code:
+        raise web.HTTPFound(f"{dash}/?error=denied")
+
+    secret = _client_secret()
+    if not secret:
+        raise web.HTTPFound(f"{dash}/?error=not_configured")
+
+    redirect_uri = _redirect_uri(request)
+    bot = _bot(request)
+
+    try:
+        async with aiohttp.ClientSession() as sess:
+            async with sess.post(
+                "https://discord.com/api/oauth2/token",
+                data={
+                    "client_id": _client_id(),
+                    "client_secret": secret,
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                },
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as r:
+                tok = await r.json()
+        access = (tok or {}).get("access_token", "")
+        if not access:
+            print(f"oauth token exchange failed: {tok}", flush=True)
+            raise web.HTTPFound(f"{dash}/?error=token")
+
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(
+                "https://discord.com/api/users/@me",
+                headers={"Authorization": f"Bearer {access}"},
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as r:
+                me = await r.json()
+        user_id = str((me or {}).get("id", ""))
+        username = (me or {}).get("username", "") or "Discord user"
+    except web.HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        print(f"oauth callback failed: {e!r}", flush=True)
+        raise web.HTTPFound(f"{dash}/?error=token")
+
+    if not user_id or bot is None or not _user_allowed(bot, user_id):
+        print(f"oauth denied for discord user {user_id}", flush=True)
+        raise web.HTTPFound(f"{dash}/?error=not_owner")
+
+    token = secrets.token_urlsafe(32)
+    _prune_sessions(request)
+    _sessions(request)[token] = {
+        "user_id": user_id,
+        "username": username,
+        "expires": time.time() + SESSION_DAYS * 24 * 3600,
+    }
+    print(f"oauth login: {username} ({user_id})", flush=True)
+    raise web.HTTPFound(f"{dash}/?session={token}")
+
+
 # ---------------- dashboard API ----------------
 
-@_guard
 async def api_health(request):
-    bot = _bot(request)
-    guilds = []
-    if bot is not None:
-        for gid in bot.store.setup_guilds():
-            g = bot.get_guild(gid)
-            if g:
-                guilds.append({"id": gid, "name": g.name,
-                               "members": g.member_count})
-    return web.json_response({"ok": True, "guilds": guilds})
+    # Never 503s. Authed callers also get the guild list and, for
+    # Discord logins, the linked Discord username.
+    ok, why, sess = _authed(request)
+    resp = {"ok": True, "dashboard_configured": _dashboard_configured()}
+    if ok:
+        bot = _bot(request)
+        guilds = []
+        if bot is not None:
+            for gid in bot.store.setup_guilds():
+                g = bot.get_guild(gid)
+                if g:
+                    guilds.append({"id": gid, "name": g.name,
+                                   "members": g.member_count})
+        resp["guilds"] = guilds
+        if sess:
+            resp["discord_user"] = {"id": sess["user_id"],
+                                    "username": sess["username"]}
+    elif why == "bad":
+        return web.json_response({"error": "You are not logged in."},
+                                 status=401)
+    return web.json_response(resp)
 
 
 @_guard
@@ -268,8 +451,11 @@ async def cors_middleware(request, handler):
 async def start(port, bot=None):
     app = web.Application(middlewares=[cors_middleware])
     app["bot"] = bot
+    app["sessions"] = {}
     app.router.add_get("/health", _health)
     app.router.add_get("/", _health)
+    app.router.add_get("/api/oauth/start", oauth_start)
+    app.router.add_get("/api/oauth/callback", oauth_callback)
     app.router.add_get("/api/health", api_health)
     app.router.add_get("/api/settings", api_settings_get)
     app.router.add_put("/api/settings", api_settings_put)
@@ -285,6 +471,8 @@ async def start(port, bot=None):
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     print(f"health endpoint listening on 0.0.0.0:{port}", flush=True)
-    if not _api_key():
-        print("DASHBOARD_KEY is not set — dashboard API is disabled.", flush=True)
+    if not _dashboard_configured():
+        print("Dashboard login is not configured — set DISCORD_CLIENT_SECRET "
+              "in the Render environment to turn on 'Log in with Discord'.",
+              flush=True)
     return runner

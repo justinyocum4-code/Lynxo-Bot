@@ -62,17 +62,17 @@ No paid services are used. The optional AI moderation uses Groq's free tier.
   missing after you press "Yes, restore". Existing things are skipped,
   never duplicated.
 - **Dashboard API:** the bot's web server also serves a small JSON API
-  under `/api/*` for the dashboard page. It is locked with a
-  `DASHBOARD_KEY` you choose — without the key, every call is rejected.
-  Endpoints: health, settings (get/put), mod log, strikes
-  (lookup/clear), backup, backup list, panic, unlock.
+  under `/api/*` for the dashboard page. It is locked behind "Log in
+  with Discord" — only the server owner (or user IDs on the `/nuke`
+  exempt list) can get in. Endpoints: health, settings (get/put),
+  mod log, strikes (lookup/clear), backup, backup list, panic, unlock.
 - **Dashboard page:** the `dashboard/` folder is a static site (no build
   step): settings toggles, mod log, user strike lookup, panic buttons,
   and backup controls. Gold-on-black, big buttons, screen-reader
   friendly. Host it on GitHub Pages (repo Settings > Pages > Deploy
   from branch, folder `/dashboard`), then open the page on your phone,
-  enter your bot's address (e.g. `https://lynxo-bot.onrender.com`) and
-  your dashboard key once — it remembers them.
+  enter your bot's address (e.g. `https://lynxo-bot.onrender.com`) once
+  and press "Log in with Discord" — it remembers you after that.
 
 ## Setup
 
@@ -108,9 +108,18 @@ Then save. The bot cannot see joins or scan messages without them.
    - `DISCORD_TOKEN` — your bot token (paste it; it stays secret).
    - `GROQ_API_KEY` — only if you want the AI moderation assist; leave it
      out otherwise and the built-in filters do the job alone.
-   - `DASHBOARD_KEY` — any long random string you make up. This is the
-     password for the dashboard page. Use the same value in the dashboard.
-4. Deploy. The bot starts itself and opens a `/health` page so Render can
+   - `DISCORD_CLIENT_ID` — from the Discord developer portal: open your
+     application, go to General Information, copy the Application ID.
+   - `DISCORD_CLIENT_SECRET` — same page, under Client Secret: press
+     "Reset Secret" if none is shown, then copy it. It stays secret.
+   - `DASHBOARD_URL` — you can leave this empty; it defaults to the
+     GitHub Pages dashboard.
+4. In the Discord developer portal, register the login redirect: open
+   your application, go to OAuth2, and under Redirects add exactly:
+   `https://lynxo-bot.onrender.com/api/oauth/callback`
+   (use your real Render URL if it differs). Save. Without this,
+   Discord will refuse the "Log in with Discord" button.
+5. Deploy. The bot starts itself and opens a `/health` page so Render can
    see it is alive.
 
 ### 5. Run /setup in your server
@@ -157,8 +166,12 @@ Never put your real token in any file you share or upload.
   `vision.py` stub ready for an AI vision provider in a later phase.
 - Slash commands can take up to an hour to appear the very first time;
   after /setup they sync to your server immediately.
-- The dashboard API is disabled until you set `DASHBOARD_KEY`. The page
-  will tell you plainly if the key is wrong or the bot is asleep.
+- The dashboard API is disabled until you set `DISCORD_CLIENT_SECRET`.
+  The page will tell you plainly if login isn't configured, if your
+  Discord account isn't the server owner, or if the bot is asleep.
+  (An old `DASHBOARD_KEY`, if still set, keeps working as a fallback.)
+- Dashboard login sessions last 7 days and live in the bot's memory —
+  every bot restart logs the dashboard out and you log in again.
 - Anti-nuke finds the culprit through Discord's audit log. If it can't
   tell who did it, it alerts you loudly but punishes nobody — better safe
   than banning the wrong person.
