@@ -674,6 +674,7 @@ $("btn-rr-load").addEventListener("click", async () => {
     $("rr-title").value = data.title || "Pick your roles";
     $("rr-description").value = data.description || "";
     $("rr-color").value = data.color || "#FFD700";
+    $("rr-image-url").value = data.image_url || "";
     $("rr-mappings").innerHTML = "";
     for (const m of data.mappings) rrAddRow(m);
     if (data.message_id) {
@@ -702,6 +703,7 @@ $("btn-rr-save").addEventListener("click", async () => {
         title: $("rr-title").value,
         description: $("rr-description").value,
         color: $("rr-color").value,
+        image_url: $("rr-image-url").value.trim(),
         mappings,
       },
     });
