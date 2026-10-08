@@ -23,6 +23,7 @@
   <button type="button" data-tab="userlookup">User Lookup</button>
   <button type="button" data-tab="emergency">Emergency</button>
   <button type="button" data-tab="backups">Backups</button>
+  <button type="button" data-tab="newreleases">New Releases</button>
 </nav>
 
 <main>
@@ -168,6 +169,30 @@
     </div>
     <p id="mycolor-result" class="muted" role="status"></p>
     <p id="rr-status" class="muted"></p>
+  </section>
+
+  <section id="tab-newreleases" aria-labelledby="h-rel" hidden>
+    <h2 id="h-rel">New Releases</h2>
+    <p>Every day the bot finds new metal albums and EPs and posts them with links to Spotify, YouTube Music, and Amazon Music.</p>
+    <div class="row">
+      <button id="btn-rel-load" type="button">Load release alerts</button>
+    </div>
+    <fieldset>
+      <legend>Release alerts</legend>
+      <label class="check"><input type="checkbox" id="rel-enabled"> Post new metal releases automatically</label>
+      <label>Channel for announcements
+        <select id="rel-channel" aria-label="Channel for new release announcements">
+          <option value="">— press “Load release alerts” —</option>
+        </select>
+      </label>
+    </fieldset>
+    <div class="row">
+      <button id="btn-rel-save" type="button">Save release alerts</button>
+      <button id="btn-rel-check" type="button">Check now</button>
+    </div>
+    <h3>Recently announced</h3>
+    <ul id="rel-recent" class="loglist" aria-label="Recently announced releases"></ul>
+    <p id="rel-status" class="muted" role="status"></p>
   </section>
 </main>
 </div>

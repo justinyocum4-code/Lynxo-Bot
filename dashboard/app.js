@@ -46,7 +46,7 @@ async function api(path, opts) {
 
 /* ---------- tabs ---------- */
 
-const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups"];
+const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases"];
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "connect";
@@ -518,5 +518,92 @@ $("btn-mycolor").addEventListener("click", async () => {
     }
     $("mycolor-result").textContent = msg;
     say(msg);
+  } catch (e) { /* say() already ran */ }
+});
+
+/* ---------- new releases ---------- */
+
+let relChannelsLoaded = false;
+
+function relSay(msg) {
+  $("rel-status").textContent = msg;
+  say(msg);
+}
+
+async function relEnsureChannels() {
+  if (relChannelsLoaded) return;
+  const data = await api("/api/channels");
+  const sel = $("rel-channel");
+  sel.innerHTML = "";
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "— pick a channel —";
+  sel.appendChild(none);
+  for (const c of data.channels) {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = "#" + c.name;
+    sel.appendChild(o);
+  }
+  relChannelsLoaded = true;
+}
+
+function relShowRecent(recent) {
+  const ul = $("rel-recent");
+  ul.innerHTML = "";
+  if (!recent || !recent.length) {
+    const li = document.createElement("li");
+    li.textContent = "Nothing announced yet.";
+    ul.appendChild(li);
+    return;
+  }
+  for (const r of recent.slice().reverse()) {
+    const li = document.createElement("li");
+    li.textContent = (r.artist || "Unknown artist") + " — " +
+      (r.title || "Unknown title");
+    ul.appendChild(li);
+  }
+}
+
+$("btn-rel-load").addEventListener("click", async () => {
+  relSay("Loading release alerts…");
+  try {
+    await relEnsureChannels();
+    const data = await api("/api/releases");
+    $("rel-enabled").checked = !!data.enabled;
+    $("rel-channel").value = data.channel_id || "";
+    relShowRecent(data.recent);
+    if (data.last_check) {
+      relSay("Loaded. Last checked: " + data.last_check + ".");
+    } else {
+      relSay("Loaded. Never checked yet — press “Check now”.");
+    }
+  } catch (e) { /* say() already ran */ }
+});
+
+$("btn-rel-save").addEventListener("click", async () => {
+  relSay("Saving…");
+  try {
+    await api("/api/releases", {
+      method: "POST",
+      body: {
+        enabled: $("rel-enabled").checked,
+        channel_id: $("rel-channel").value || null,
+      },
+    });
+    relSay("Saved.");
+  } catch (e) { /* say() already ran */ }
+});
+
+$("btn-rel-check").addEventListener("click", async () => {
+  relSay("Checking for new releases… this can take a few seconds.");
+  try {
+    const data = await api("/api/releases/check", {
+      method: "POST", body: {},
+    });
+    const n = data.posted || 0;
+    relSay("Done. Posted " + n + " new release" + (n === 1 ? "." : "s."));
+    const cfg = await api("/api/releases");
+    relShowRecent(cfg.recent);
   } catch (e) { /* say() already ran */ }
 });
