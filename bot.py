@@ -20,6 +20,7 @@ import releases
 import more_security
 import community
 import utility
+import tickets
 
 
 class LynxoBot(commands.Bot):
@@ -43,10 +44,13 @@ class LynxoBot(commands.Bot):
         await self.add_cog(more_security.MoreSecurity(self))
         await self.add_cog(community.Community(self))
         await self.add_cog(utility.Utility(self))
+        await self.add_cog(tickets.Tickets(self))
         # Persistent buttons must be re-registered every startup.
         self.add_view(verification.VerifyView(self))
         self.add_view(verification.AdultView(self))
         self.add_view(verification.ReviewView(self))
+        self.add_view(tickets.TicketPanelView(self))
+        self.add_view(tickets.TicketCloseView(self))
         port = int(os.environ.get("PORT", "8000"))
         self._health_runner = await keepalive.start(port, self)
 

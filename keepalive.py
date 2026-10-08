@@ -877,6 +877,121 @@ async def api_reaction_roles_remove(request):
     return web.json_response({"ok": True, "removed": removed})
 
 
+def _ticket_panel_view(guild, cfg):
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "channel_id": str(cfg.get("channel_id") or ""),
+        "message_id": str(cfg.get("message_id") or ""),
+        "title": str(cfg.get("title") or ""),
+        "description": str(cfg.get("description") or ""),
+        "color": "#%06X" % (int(cfg.get("color") or 16766720) & 0xFFFFFF),
+        "image_url": str(cfg.get("image_url") or ""),
+        "button_text": str(cfg.get("button_text") or ""),
+        "button_emoji": str(cfg.get("button_emoji") or ""),
+        "button_style": str(cfg.get("button_style") or "primary"),
+        "welcome": str(cfg.get("welcome") or ""),
+        "support_role_id": str(cfg.get("support_role_id") or ""),
+    }
+
+
+@_guard
+async def api_tickets_get(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("Tickets")
+    if cog is None:
+        return web.json_response({"error": "Tickets not loaded."}, status=500)
+    cfg = cog._config(guild)
+    return web.json_response({
+        "panel": _ticket_panel_view(guild, cfg),
+        "open_tickets": cog.open_tickets(guild),
+    })
+
+
+@_guard
+async def api_tickets_save(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"error": "Body must be JSON."}, status=400)
+    bot = _bot(request)
+    cog = bot.get_cog("Tickets")
+    if cog is None:
+        return web.json_response({"error": "Tickets not loaded."}, status=500)
+    cfg = cog._config(guild)
+    cfg["enabled"] = bool(body.get("enabled"))
+    ch_id = str(body.get("channel_id") or "").strip()
+    ch = guild.get_channel(int(ch_id)) if ch_id.isdigit() else None
+    if ch_id and (ch is None or ch.type.name != "text"):
+        return web.json_response({"error": "Pick a text channel."}, status=400)
+    cfg["channel_id"] = ch.id if ch else None
+    cfg["title"] = str(body.get("title") or "Need help?").strip()[:256]
+    cfg["description"] = str(body.get("description") or "").strip()[:2000]
+    color = _parse_rr_color(body.get("color"))
+    cfg["color"] = color if color is not None else 16766720
+    image_url = str(body.get("image_url") or "").strip()[:2000]
+    if image_url and not image_url.lower().startswith(("http://", "https://")):
+        return web.json_response(
+            {"error": "Image URL must start with http:// or https://."},
+            status=400)
+    cfg["image_url"] = image_url
+    cfg["button_text"] = str(body.get("button_text") or "Open a Ticket").strip()[:80]
+    cfg["button_emoji"] = str(body.get("button_emoji") or "").strip()[:32]
+    style = str(body.get("button_style") or "primary").strip()
+    if style not in ("primary", "secondary", "success", "danger"):
+        style = "primary"
+    cfg["button_style"] = style
+    cfg["welcome"] = str(body.get("welcome") or "").strip()[:1000]
+    sr_id = str(body.get("support_role_id") or "").strip()
+    sr = guild.get_role(int(sr_id)) if sr_id.isdigit() else None
+    cfg["support_role_id"] = sr.id if sr else None
+    bot.store.save()
+    return web.json_response({"ok": True, "panel": _ticket_panel_view(guild, cfg)})
+
+
+@_guard
+async def api_tickets_post(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("Tickets")
+    if cog is None:
+        return web.json_response({"error": "Tickets not loaded."}, status=500)
+    try:
+        message = await cog.post_panel(guild)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"error": f"Could not post: {e}"}, status=500)
+    return web.json_response({"ok": True, "message_id": str(message.id)})
+
+
+@_guard
+async def api_tickets_close(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("Tickets")
+    if cog is None:
+        return web.json_response({"error": "Tickets not loaded."}, status=500)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    tid = str(body.get("thread_id") or "").strip()
+    if not tid.isdigit():
+        return web.json_response({"error": "Missing thread id."}, status=400)
+    closed = await cog.close_thread(guild, int(tid))
+    return web.json_response({"ok": True, "closed": closed})
+
+
 def _releases_view(cfg):
     recent = cfg.get("announced") or []
     recent = recent[-10:]
@@ -1382,6 +1497,10 @@ async def start(port, bot=None):
     app.router.add_post("/api/reaction-roles/post", api_reaction_roles_publish)
     app.router.add_post("/api/reaction-roles/delete", api_reaction_roles_delete)
     app.router.add_post("/api/reaction-roles/remove", api_reaction_roles_remove)
+    app.router.add_get("/api/tickets", api_tickets_get)
+    app.router.add_post("/api/tickets", api_tickets_save)
+    app.router.add_post("/api/tickets/post", api_tickets_post)
+    app.router.add_post("/api/tickets/close", api_tickets_close)
     app.router.add_post("/api/reaction-roles/find", api_reaction_roles_find)
     app.router.add_get("/api/releases", api_releases_get)
     app.router.add_post("/api/releases", api_releases_post)
