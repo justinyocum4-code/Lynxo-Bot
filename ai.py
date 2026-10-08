@@ -11,26 +11,77 @@ import os
 import aiohttp
 
 MODEL = "openai/gpt-oss-20b"
+URL = "https://api.groq.com/openai/v1/chat/completions"
+MODELS_URL = "https://api.groq.com/openai/v1/models"
 
-# Text models for planning/moderation, tried in order.
-TEXT_MODELS = [
+# Preferred models, in order. _available_models() filters these against
+# what Groq actually serves right now, so retired models are skipped
+# automatically instead of failing at call time.
+_TEXT_PREFS = [
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
     "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
     "qwen/qwen3-32b",
+    "gemma2-9b-it",
 ]
-URL = "https://api.groq.com/openai/v1/chat/completions"
-
-# Vision-capable models, tried in order. Groq retires models over time,
-# so ai_vision_scan falls through the list and returns None if none work.
-# (Llama 4 Scout/Maverick were retired from Groq's vision lineup in 2026;
-# Qwen models are the current image-capable ones.)
-VISION_MODELS = [
-    "qwen/qwen3.6-27b",
+_VISION_PREFS = [
+    "qwen/qwen3-32b",
     "qwen/qwen3.8-27b",
+    "qwen/qwen3.6-27b",
     "meta-llama/llama-4-scout-17b-16e-instruct",
     "meta-llama/llama-4-maverick-17b-128e-instruct",
 ]
+
+_model_cache = {"text": None, "vision": None}
+
+
+async def _available_models():
+    """Return the set of model IDs Groq currently serves (cached)."""
+    if _model_cache.get("all") is not None:
+        return _model_cache["all"]
+    key = os.environ.get("GROQ_API_KEY")
+    ids = set()
+    if key:
+        try:
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    MODELS_URL,
+                    headers={"Authorization": f"Bearer {key}"},
+                    timeout=timeout,
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        for m in data.get("data", []):
+                            mid = m.get("id")
+                            if mid:
+                                ids.add(mid)
+        except Exception as e:  # noqa: BLE001
+            print(f"ai: model list fetch failed: {e}", flush=True)
+    _model_cache["all"] = ids
+    print(f"ai: Groq serves {len(ids)} models", flush=True)
+    return ids
+
+
+async def _pick_models(kind):
+    """Pick working models of a kind ('text' or 'vision')."""
+    if _model_cache[kind] is not None:
+        return _model_cache[kind]
+    available = await _available_models()
+    prefs = _TEXT_PREFS if kind == "text" else _VISION_PREFS
+    if available:
+        picked = [m for m in prefs if m in available]
+    else:
+        picked = list(prefs)  # list fetch failed; try prefs blind
+    _model_cache[kind] = picked
+    print(f"ai: using {kind} models: {picked}", flush=True)
+    return picked
+
+
+# Backwards-compat: module-level lists (populated lazily).
+TEXT_MODELS = _TEXT_PREFS
+VISION_MODELS = _VISION_PREFS
 
 
 async def ai_moderate(text):
@@ -45,7 +96,7 @@ async def ai_moderate(text):
         "Normal chat, friendly profanity, and metal lyrics are OK.\n\n"
         f"Message: {text[:500]}"
     )
-    for model in TEXT_MODELS:
+    for model in await _pick_models("text"):
         try:
             timeout = aiohttp.ClientTimeout(total=12)
             async with aiohttp.ClientSession() as session:
@@ -128,7 +179,7 @@ async def ai_plan_server_edit(prompt):
         "- If the request is not a server-editing request, or you cannot "
         "understand it, return []."
     )
-    for model in TEXT_MODELS:
+    for model in await _pick_models("text"):
         try:
             timeout = aiohttp.ClientTimeout(total=45)
             async with aiohttp.ClientSession() as session:
@@ -183,7 +234,7 @@ async def ai_vision_scan(image_bytes, mime, prompt):
         return None
     b64 = base64.b64encode(image_bytes).decode("ascii")
     data_url = f"data:{mime or 'image/jpeg'};base64,{b64}"
-    for model in VISION_MODELS:
+    for model in await _pick_models("vision"):
         try:
             timeout = aiohttp.ClientTimeout(total=60)
             async with aiohttp.ClientSession() as session:
