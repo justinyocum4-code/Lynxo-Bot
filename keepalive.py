@@ -854,6 +854,8 @@ _BUILDER_PERMS = {
 _BUILDER_ACTIONS = {
     "create_channel", "delete_channel", "create_role", "delete_role",
     "set_role_color", "set_channel_perms",
+    "rename_channel", "rename_role", "move_channel",
+    "config_leveling", "add_level_reward", "remove_level_reward",
 }
 
 
@@ -1070,6 +1072,116 @@ async def _builder_run(bot, guild, actions):
                 await mod_log(bot, guild,
                               f"BUILDER — set {role.name} permissions in "
                               f"#{ch.name}.")
+            elif act == "rename_channel":
+                ch = _builder_find_channel(guild, raw.get("name"))
+                new_name = str(raw.get("new_name", "")).strip().lstrip("#")
+                if ch is None:
+                    skipped.append(
+                        f"Could not find channel '{raw.get('name')}'.")
+                    continue
+                if not new_name:
+                    skipped.append("No new name given for the rename.")
+                    continue
+                old = ch.name
+                await ch.edit(name=new_name, reason="Dashboard server builder")
+                done.append(f"Renamed #{old} to #{ch.name}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — renamed channel #{old} to #{ch.name}.")
+            elif act == "rename_role":
+                role = _builder_find_role(guild, raw.get("name"))
+                new_name = str(raw.get("new_name", "")).strip()
+                if role is None:
+                    skipped.append(
+                        f"Could not find role '{raw.get('name')}'.")
+                    continue
+                if not new_name:
+                    skipped.append("No new name given for the rename.")
+                    continue
+                if role.is_default() or role.managed:
+                    skipped.append(
+                        f"Role {role.name} can't be renamed.")
+                    continue
+                old = role.name
+                await role.edit(name=new_name, reason="Dashboard server builder")
+                done.append(f"Renamed role {old} to {role.name}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — renamed role {old} to {role.name}.")
+            elif act == "move_channel":
+                ch = _builder_find_channel(guild, raw.get("name"))
+                cat_name = str(raw.get("category", "") or "").strip()
+                if ch is None:
+                    skipped.append(
+                        f"Could not find channel '{raw.get('name')}'.")
+                    continue
+                cat = None
+                if cat_name:
+                    for c in guild.categories:
+                        if c.name.lower() == cat_name.lower():
+                            cat = c
+                            break
+                    if cat is None:
+                        skipped.append(
+                            f"Could not find category '{cat_name}'.")
+                        continue
+                await ch.edit(category=cat, reason="Dashboard server builder")
+                where = f"into {cat.name}" if cat else "out of its category"
+                done.append(f"Moved #{ch.name} {where}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — moved #{ch.name} {where}.")
+            elif act == "config_leveling":
+                g = _bot(request).store.guild(guild.id)
+                s = g["settings"]
+                if "enabled" in raw:
+                    s["leveling_enabled"] = bool(raw["enabled"])
+                lch_name = str(raw.get("levelup_channel", "") or "").strip()
+                if lch_name:
+                    lch = _builder_find_channel(guild, lch_name)
+                    if lch is None:
+                        skipped.append(
+                            f"Could not find channel '{lch_name}' for "
+                            "level-up messages.")
+                        continue
+                    s["levelup_channel_id"] = lch.id
+                _bot(request).store.save()
+                done.append("Updated the leveling settings.")
+                await mod_log(bot, guild, "BUILDER — updated leveling settings.")
+            elif act == "add_level_reward":
+                try:
+                    level = int(raw.get("level", 0))
+                except (TypeError, ValueError):
+                    level = 0
+                role = _builder_find_role(guild, raw.get("role"))
+                if not (1 <= level <= 100):
+                    skipped.append("Level must be a number from 1 to 100.")
+                    continue
+                if role is None:
+                    skipped.append(
+                        f"Could not find role '{raw.get('role')}'.")
+                    continue
+                g = _bot(request).store.guild(guild.id)
+                lr = g["settings"].setdefault("level_roles", {})
+                lr[str(level)] = role.id
+                _bot(request).store.save()
+                done.append(
+                    f"Level {level} now grants the {role.name} role.")
+                await mod_log(bot, guild,
+                              f"BUILDER — level {level} reward set to "
+                              f"{role.name}.")
+            elif act == "remove_level_reward":
+                try:
+                    level = int(raw.get("level", 0))
+                except (TypeError, ValueError):
+                    level = 0
+                g = _bot(request).store.guild(guild.id)
+                lr = g["settings"].setdefault("level_roles", {})
+                if str(level) in lr:
+                    del lr[str(level)]
+                    _bot(request).store.save()
+                    done.append(f"Removed the level {level} reward.")
+                    await mod_log(bot, guild,
+                                  f"BUILDER — removed level {level} reward.")
+                else:
+                    skipped.append(f"No reward set for level {level}.")
         except discord.Forbidden:
             skipped.append("Discord wouldn't let me do one change "
                            "(missing permission).")

@@ -95,6 +95,15 @@ async def ai_plan_server_edit(prompt):
         '{"action":"set_role_color","name":"VIP","color":"gold"}\n'
         '{"action":"set_channel_perms","channel":"general","role":"Member",'
         '"allow":["view","send"],"deny":[]}\n\n'
+        '{"action":"rename_channel","name":"new-releases",'
+        '"new_name":"\U0001F195 new-releases"}\n'
+        '{"action":"rename_role","name":"Old","new_name":"New"}\n'
+        '{"action":"move_channel","name":"general",'
+        '"category":"Community"}\n'
+        '{"action":"config_leveling","enabled":true,'
+        '"levelup_channel":"general"}\n'
+        '{"action":"add_level_reward","level":5,"role":"VIP"}\n'
+        '{"action":"remove_level_reward","level":5}\n\n'
         "Examples:\n"
         "Request: add a text channel called metal-memes\n"
         '[{"action":"create_channel","name":"metal-memes","type":"text"}]\n'
@@ -103,6 +112,12 @@ async def ai_plan_server_edit(prompt):
         "Request: let the Member role send messages in general\n"
         '[{"action":"set_channel_perms","channel":"general","role":"Member",'
         '"allow":["view","send"],"deny":[]}]\n\n'
+        "Request: put an emoji on the new-releases channel\n"
+        '[{"action":"rename_channel","name":"new-releases",'
+        '"new_name":"\U0001F195 new-releases"}]\n'
+        "Request: turn on leveling and give VIP at level 5\n"
+        '[{"action":"config_leveling","enabled":true},'
+        '{"action":"add_level_reward","level":5,"role":"VIP"}]\n\n'
         "Rules:\n"
         "- type is one of: text, voice, category (default text).\n"
         "- category is optional: exact name of a category to place the channel in.\n"
