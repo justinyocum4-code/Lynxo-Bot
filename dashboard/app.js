@@ -210,7 +210,6 @@ const SETTING_FIELDS = [
 const DICT_TEXTAREAS = {
   "custom_commands": "=",
   "autoresponders": "=",
-  "level_roles": ":",
 };
 
 function dictToTextarea(obj, sep) {
@@ -268,6 +267,10 @@ function fillSettings(s) {
       el.value = dictToTextarea(s[name], DICT_TEXTAREAS[name]);
       continue;
     }
+    if (name === "level_roles") {
+      renderLevelRewardRows(s[name] || {});
+      continue;
+    }
     if (s[name] == null) el.value = "";
     else el.value = s[name];
   }
@@ -280,6 +283,7 @@ function settingInputValue(name, el) {
     return t === "" ? null : Number(t);
   }
   if (name in DICT_TEXTAREAS) return textareaToDict(el.value, DICT_TEXTAREAS[name]);
+  if (name === "level_roles") return levelRewardRowsToDict();
   if (el.tagName === "SELECT") return el.value;
   if (el.tagName === "TEXTAREA") return el.value;
   return Number(el.value);
@@ -295,9 +299,92 @@ async function loadAllSettings() {
   } catch (e) { /* say() already ran */ }
 }
 
+let lrRolesCache = null;
+async function lrEnsureRoles() {
+  if (lrRolesCache) return lrRolesCache;
+  try {
+    const data = await api("/api/roles");
+    lrRolesCache = data.roles || [];
+  } catch (e) { lrRolesCache = []; }
+  return lrRolesCache;
+}
+function lrFillRoleSelect(sel, selectedId) {
+  sel.innerHTML = "";
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "\u2014 pick a role \u2014";
+  sel.appendChild(blank);
+  for (const r of (lrRolesCache || [])) {
+    const o = document.createElement("option");
+    o.value = r.id;
+    o.textContent = r.name;
+    if (String(r.id) === String(selectedId)) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+function addLevelRewardRow(level, roleId) {
+  const wrap = $("level-rewards");
+  if (!wrap) return;
+  const row = document.createElement("div");
+  row.className = "lr-row";
+  const lvlLabel = document.createElement("label");
+  lvlLabel.textContent = "Level ";
+  const lvl = document.createElement("input");
+  lvl.type = "number";
+  lvl.min = "1";
+  lvl.max = "100";
+  lvl.className = "lr-level";
+  lvl.value = level || "";
+  lvl.setAttribute("aria-label", "Level number");
+  lvlLabel.appendChild(lvl);
+  const roleLabel = document.createElement("label");
+  roleLabel.textContent = "Role ";
+  const sel = document.createElement("select");
+  sel.className = "lr-role";
+  sel.setAttribute("aria-label", "Reward role");
+  lrFillRoleSelect(sel, roleId || "");
+  roleLabel.appendChild(sel);
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.textContent = "Remove";
+  remove.setAttribute("aria-label", "Remove this level reward");
+  remove.addEventListener("click", () => row.remove());
+  row.appendChild(lvlLabel);
+  row.appendChild(roleLabel);
+  row.appendChild(remove);
+  wrap.appendChild(row);
+}
+function renderLevelRewardRows(dict) {
+  const wrap = $("level-rewards");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  lrEnsureRoles().then(() => {
+    const entries = Object.keys(dict || {}).sort((a, b) => Number(a) - Number(b));
+    if (!entries.length) addLevelRewardRow("", "");
+    for (const lvl of entries) addLevelRewardRow(lvl, dict[lvl]);
+    for (const sel of wrap.querySelectorAll(".lr-role")) {
+      lrFillRoleSelect(sel, sel.value);
+    }
+  });
+}
+function levelRewardRowsToDict() {
+  const out = {};
+  const wrap = $("level-rewards");
+  if (!wrap) return out;
+  for (const row of wrap.querySelectorAll(".lr-row")) {
+    const lvl = row.querySelector(".lr-level").value.trim();
+    const rid = row.querySelector(".lr-role").value;
+    if (lvl && rid) out[lvl] = rid;
+  }
+  return out;
+}
 async function saveAllSettings() {
   const settings = {};
   for (const name of SETTING_FIELDS) {
+    if (name === "level_roles") {
+      settings[name] = levelRewardRowsToDict();
+      continue;
+    }
     const el = $("set-" + name);
     if (!el) continue;
     settings[name] = settingInputValue(name, el);
@@ -313,6 +400,11 @@ $("btn-load-settings").addEventListener("click", loadAllSettings);
 $("btn-save-settings").addEventListener("click", saveAllSettings);
 $("btn-load-community").addEventListener("click", loadAllSettings);
 $("btn-save-community").addEventListener("click", saveAllSettings);
+const lrAdd = $("btn-add-level-reward");
+if (lrAdd) lrAdd.addEventListener("click", async () => {
+  await lrEnsureRoles();
+  addLevelRewardRow("", "");
+});
 $("btn-load-custom").addEventListener("click", loadAllSettings);
 $("btn-save-custom").addEventListener("click", saveAllSettings);
 

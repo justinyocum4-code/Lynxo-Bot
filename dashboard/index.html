@@ -273,10 +273,11 @@
           <option value="">Same channel they leveled up in</option>
         </select>
       </label>
-      <label>Level reward roles
-        <textarea id="set-level_roles" rows="3" placeholder="5:123456789012345678"></textarea>
-      </label>
-      <p class="muted">One per line: level number, colon, role ID. Example: 5:123456789012345678</p>
+      <div>Level reward roles
+        <div id="level-rewards"></div>
+        <button type="button" id="btn-add-level-reward">Add reward</button>
+      </div>
+      <p class="muted">Pick a level and the role members earn when they reach it.</p>
     </fieldset>
     <fieldset>
       <legend>Starboard</legend>
