@@ -840,6 +840,268 @@ async def api_releases_check(request):
     return web.json_response({"ok": True, "posted": posted})
 
 
+# ---------- plain-English server builder ----------
+
+_BUILDER_COLORS = {
+    "red": 0xFF0000, "blue": 0x0000FF, "green": 0x00FF00, "gold": 0xFFD700,
+    "purple": 0x800080, "orange": 0xFFA500, "pink": 0xFFC0CB, "teal": 0x008080,
+    "white": 0xFFFFFF, "black": 0x000000,
+}
+_BUILDER_PERMS = {
+    "view": "view_channel", "send": "send_messages", "speak": "speak",
+    "connect": "connect", "react": "add_reactions",
+}
+_BUILDER_ACTIONS = {
+    "create_channel", "delete_channel", "create_role", "delete_role",
+    "set_role_color", "set_channel_perms",
+}
+
+
+def _builder_find_channel(guild, name):
+    name = (name or "").strip().lstrip("#").lower()
+    if not name:
+        return None
+    for ch in guild.channels:
+        if ch.name.lower() == name:
+            return ch
+    return None
+
+
+def _builder_find_role(guild, name):
+    name = (name or "").strip().lower()
+    if not name:
+        return None
+    for r in guild.roles:
+        if r.name.lower() == name:
+            return r
+    return None
+
+
+def _builder_protected_ids(bot, guild):
+    """Channel/role ids the builder must never touch (from /setup)."""
+    g = bot.store.guild(guild.id)
+    ids = set()
+    for cid in (g.get("channels") or {}).values():
+        try:
+            ids.add(int(cid))
+        except (ValueError, TypeError):
+            pass
+    for rid in (g.get("roles") or {}).values():
+        try:
+            ids.add(int(rid))
+        except (ValueError, TypeError):
+            pass
+    return ids
+
+
+def _builder_color(value):
+    v = (value or "").strip().lower()
+    if v in _BUILDER_COLORS:
+        return discord.Colour(_BUILDER_COLORS[v])
+    if v.startswith("#") and len(v) == 7:
+        try:
+            return discord.Colour(int(v[1:], 16))
+        except ValueError:
+            return None
+    return None
+
+
+def _builder_role_locked(guild, role, protected_ids):
+    """Plain-words reason a role can't be touched, or None if it's fine."""
+    if role is None:
+        return "I couldn't find that role."
+    if role.id in protected_ids:
+        return (f"Role {role.name} is part of the bot's setup — "
+                "I won't touch it.")
+    if role.is_default():
+        return "I can't change the @everyone role."
+    if role.managed:
+        return (f"Role {role.name} is managed by an integration — "
+                "I can't change it.")
+    me = guild.me
+    if me and role >= me.top_role:
+        return (f"Role {role.name} sits above the bot's own role — "
+                "I can't reach it.")
+    return None
+
+
+async def _builder_run(bot, guild, actions):
+    """Execute validated builder actions. Returns (done, skipped) strings."""
+    from utils import mod_log
+    done, skipped = [], []
+    protected_ids = _builder_protected_ids(bot, guild)
+    for raw in actions[:30]:
+        if not isinstance(raw, dict):
+            continue
+        act = raw.get("action")
+        if act not in _BUILDER_ACTIONS:
+            continue
+        try:
+            if act == "create_channel":
+                name = str(raw.get("name", "")).strip().lstrip("#")
+                ctype = str(raw.get("type", "text")).strip().lower()
+                if not name or ctype not in ("text", "voice", "category"):
+                    skipped.append("Skipped making a channel: bad name or type.")
+                    continue
+                if _builder_find_channel(guild, name):
+                    skipped.append(f"Channel #{name} already exists.")
+                    continue
+                if ctype == "voice":
+                    ch = await guild.create_voice_channel(
+                        name, reason="Dashboard server builder")
+                elif ctype == "category":
+                    ch = await guild.create_category_channel(
+                        name, reason="Dashboard server builder")
+                else:
+                    ch = await guild.create_text_channel(
+                        name, reason="Dashboard server builder")
+                done.append(f"Created {ctype} channel #{ch.name}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — created {ctype} channel #{ch.name}.")
+            elif act == "delete_channel":
+                ch = _builder_find_channel(guild, raw.get("name"))
+                if ch is None:
+                    skipped.append(
+                        f"Could not find channel '{raw.get('name')}'.")
+                    continue
+                if ch.id in protected_ids:
+                    skipped.append(
+                        f"Channel #{ch.name} is part of the bot's setup — "
+                        "left alone.")
+                    continue
+                cname = ch.name
+                await ch.delete(reason="Dashboard server builder")
+                done.append(f"Deleted channel #{cname}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — deleted channel #{cname}.")
+            elif act == "create_role":
+                name = str(raw.get("name", "")).strip()
+                if not name:
+                    skipped.append("Skipped making a role: no name given.")
+                    continue
+                if _builder_find_role(guild, name):
+                    skipped.append(f"Role '{name}' already exists.")
+                    continue
+                color = _builder_color(raw.get("color"))
+                role = await guild.create_role(
+                    name=name,
+                    colour=color or discord.Colour.default(),
+                    reason="Dashboard server builder")
+                if raw.get("color") and color is None:
+                    done.append(
+                        f"Created role {role.name}, but I didn't recognize "
+                        f"the color '{raw.get('color')}' so it has no color.")
+                else:
+                    done.append(f"Created role {role.name}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — created role {role.name}.")
+            elif act == "delete_role":
+                role = _builder_find_role(guild, raw.get("name"))
+                locked = _builder_role_locked(guild, role, protected_ids)
+                if locked:
+                    skipped.append(locked)
+                    continue
+                rname = role.name
+                await role.delete(reason="Dashboard server builder")
+                done.append(f"Deleted role {rname}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — deleted role {rname}.")
+            elif act == "set_role_color":
+                role = _builder_find_role(guild, raw.get("name"))
+                locked = _builder_role_locked(guild, role, protected_ids)
+                if locked:
+                    skipped.append(locked)
+                    continue
+                color = _builder_color(raw.get("color"))
+                if color is None:
+                    skipped.append(
+                        f"Didn't recognize the color '{raw.get('color')}'.")
+                    continue
+                await role.edit(colour=color,
+                                reason="Dashboard server builder")
+                done.append(f"Set {role.name} to {raw.get('color')}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — set role {role.name} color to "
+                              f"{raw.get('color')}.")
+            elif act == "set_channel_perms":
+                ch = _builder_find_channel(guild, raw.get("channel"))
+                role = _builder_find_role(guild, raw.get("role"))
+                if ch is None:
+                    skipped.append(
+                        f"Could not find channel '{raw.get('channel')}'.")
+                    continue
+                if role is None:
+                    skipped.append(
+                        f"Could not find role '{raw.get('role')}'.")
+                    continue
+                if ch.id in protected_ids:
+                    skipped.append(
+                        f"Channel #{ch.name} is part of the bot's setup — "
+                        "left alone.")
+                    continue
+                allow = [w for w in (raw.get("allow") or [])
+                         if w in _BUILDER_PERMS]
+                deny = [w for w in (raw.get("deny") or [])
+                        if w in _BUILDER_PERMS]
+                if not allow and not deny:
+                    skipped.append(
+                        f"No valid permissions given for #{ch.name}.")
+                    continue
+                ow = ch.overwrites_for(role)
+                for w in allow:
+                    setattr(ow, _BUILDER_PERMS[w], True)
+                for w in deny:
+                    setattr(ow, _BUILDER_PERMS[w], False)
+                # You can't use a channel you can't see.
+                if (any(w in allow for w in ("send", "speak", "connect", "react"))
+                        and "view" not in deny):
+                    ow.view_channel = True
+                await ch.set_permissions(
+                    role, overwrite=ow, reason="Dashboard server builder")
+                done.append(
+                    f"Updated what {role.name} can do in #{ch.name}.")
+                await mod_log(bot, guild,
+                              f"BUILDER — set {role.name} permissions in "
+                              f"#{ch.name}.")
+        except discord.Forbidden:
+            skipped.append("Discord wouldn't let me do one change "
+                           "(missing permission).")
+        except discord.HTTPException as e:  # noqa: BLE001
+            skipped.append(f"One change failed: {e}")
+    return done, skipped
+
+
+@_guard
+async def api_editserver(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"error": "Bad request."}, status=400)
+    prompt = str(body.get("prompt", "")).strip()
+    if not prompt:
+        return web.json_response(
+            {"error": "Type what you want changed first."}, status=400)
+    if len(prompt) > 1000:
+        return web.json_response(
+            {"error": "Keep it under 1000 characters."}, status=400)
+    from ai import ai_plan_server_edit
+    actions = await ai_plan_server_edit(prompt)
+    if actions is None:
+        return web.json_response(
+            {"error": "The AI helper didn't answer. Try again in a bit."},
+            status=502)
+    if not actions:
+        return web.json_response(
+            {"error": "I couldn't understand that — try simpler wording like "
+                      "'add a text channel called X'."},
+            status=400)
+    done, skipped = await _builder_run(_bot(request), guild, actions)
+    return web.json_response({"ok": True, "done": done, "skipped": skipped})
+
+
 @web.middleware
 async def cors_middleware(request, handler):
     if request.method == "OPTIONS":
@@ -880,6 +1142,7 @@ async def start(port, bot=None):
     app.router.add_get("/api/releases", api_releases_get)
     app.router.add_post("/api/releases", api_releases_post)
     app.router.add_post("/api/releases/check", api_releases_check)
+    app.router.add_post("/api/editserver", api_editserver)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)

@@ -5,6 +5,7 @@ guild has ai_moderation enabled. Any failure -> None (rule-based filters
 keep working on their own).
 """
 import base64
+import json
 import os
 
 import aiohttp
@@ -58,6 +59,78 @@ async def ai_moderate(text):
             return out
         return None
     except Exception:
+        return None
+
+
+async def ai_plan_server_edit(prompt):
+    """Turn a plain-English server-edit request into a JSON action list.
+
+    Returns the list (possibly empty when the request is unclear) or None
+    if the AI call itself failed."""
+    key = os.environ.get("GROQ_API_KEY")
+    if not key or not (prompt or "").strip():
+        return None
+    system = (
+        "You turn a Discord server owner's plain-English request into a JSON "
+        "array of actions. Respond with ONLY the JSON array, no other text, "
+        "no markdown fences.\n\n"
+        "Allowed actions (use exactly these field names):\n"
+        '{"action":"create_channel","name":"metal-memes","type":"text"}\n'
+        '{"action":"create_channel","name":"Lounge","type":"voice"}\n'
+        '{"action":"create_channel","name":"Games","type":"category"}\n'
+        '{"action":"delete_channel","name":"off-topic"}\n'
+        '{"action":"create_role","name":"VIP","color":"gold"}\n'
+        '{"action":"delete_role","name":"Old Role"}\n'
+        '{"action":"set_role_color","name":"VIP","color":"gold"}\n'
+        '{"action":"set_channel_perms","channel":"general","role":"Member",'
+        '"allow":["view","send"],"deny":[]}\n\n'
+        "Examples:\n"
+        "Request: add a text channel called metal-memes\n"
+        '[{"action":"create_channel","name":"metal-memes","type":"text"}]\n'
+        "Request: make a VIP role with a gold color\n"
+        '[{"action":"create_role","name":"VIP","color":"gold"}]\n'
+        "Request: let the Member role send messages in general\n"
+        '[{"action":"set_channel_perms","channel":"general","role":"Member",'
+        '"allow":["view","send"],"deny":[]}]\n\n'
+        "Rules:\n"
+        "- type is one of: text, voice, category (default text).\n"
+        "- color is one of: red, blue, green, gold, purple, orange, pink, "
+        "teal, white, black, or a #RRGGBB hex code.\n"
+        "- allow/deny use only these words: view, send, speak, connect, react.\n"
+        "- Return at most 30 actions. Copy names exactly as the user wrote them.\n"
+        "- If the request is not a server-editing request, or you cannot "
+        "understand it, return []."
+    )
+    try:
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                URL,
+                headers={"Authorization": f"Bearer {key}"},
+                json={
+                    "model": MODEL,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": prompt[:1000]},
+                    ],
+                    "max_tokens": 800,
+                    "temperature": 0,
+                },
+                timeout=timeout,
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+        text = data["choices"][0]["message"]["content"].strip()
+        # Strip markdown fences if the model added them anyway.
+        if text.startswith("```"):
+            text = "\n".join(
+                ln for ln in text.split("\n")
+                if not ln.strip().startswith("```")
+            ).strip()
+        actions = json.loads(text)
+        return actions if isinstance(actions, list) else None
+    except Exception:  # noqa: BLE001
         return None
 
 
