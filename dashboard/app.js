@@ -1074,7 +1074,6 @@ async function tkEnsureLists() {
       def.textContent = "— pick a channel —";
       chSel.appendChild(def);
       for (const c of data.channels) {
-        if (c.type !== 0) continue;
         const o = document.createElement("option");
         o.value = c.id;
         o.textContent = "#" + c.name;
@@ -1290,7 +1289,6 @@ async function achEnsureChannels() {
     def.value = ""; def.textContent = "Same channel they earned it in";
     sel.appendChild(def);
     for (const c of data.channels) {
-      if (c.type !== 0) continue;
       const o = document.createElement("option");
       o.value = c.id; o.textContent = "#" + c.name;
       sel.appendChild(o);
