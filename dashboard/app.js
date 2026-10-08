@@ -44,6 +44,27 @@ async function api(path, opts) {
   return data;
 }
 
+/* ---------- tabs ---------- */
+
+const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups"];
+
+function showTab(name) {
+  if (!TAB_NAMES.includes(name)) name = "connect";
+  for (const n of TAB_NAMES) {
+    const sec = $("tab-" + n);
+    if (sec) sec.hidden = n !== name;
+  }
+  for (const btn of document.querySelectorAll("#side-menu button")) {
+    if (btn.dataset.tab === name) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  }
+  try { localStorage.setItem("lynxo_dashboard_tab", name); } catch (e) { /* ignore */ }
+}
+
+for (const btn of document.querySelectorAll("#side-menu button")) {
+  btn.addEventListener("click", () => showTab(btn.dataset.tab));
+}
+
 /* ---------- connect ---------- */
 
 function saveBase() {
@@ -94,6 +115,7 @@ async function checkLogin() {
   }
   if (session) {
     localStorage.setItem("lynxo_session", session);
+    showTab("connect");
     checkLogin();
     return;
   }
@@ -105,8 +127,11 @@ async function checkLogin() {
     say("Discord login didn't finish. Press “Log in with Discord” to try again.");
     return;
   }
-  // Returning visit: restore the bot address; re-check a saved login.
+  // Returning visit: restore the bot address and last-open tab; re-check a saved login.
   $("api-base").value = localStorage.getItem("lynxo_api_base_v2") || "https://lynxo-bot.onrender.com";
+  let savedTab = null;
+  try { savedTab = localStorage.getItem("lynxo_dashboard_tab"); } catch (e) { /* ignore */ }
+  showTab(savedTab || "connect");
   if ($("api-base").value && localStorage.getItem("lynxo_session")) {
     say("Welcome back. Checking your saved login…");
     checkLogin();

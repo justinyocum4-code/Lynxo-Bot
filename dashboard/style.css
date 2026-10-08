@@ -8,7 +8,9 @@
   --muted: #b0b0b0;
   --danger: #c0392b;
 }
+
 * { box-sizing: border-box; }
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -21,8 +23,10 @@ body {
   margin-left: auto;
   margin-right: auto;
 }
+
 header h1 { color: var(--gold); font-size: 28px; margin: 24px 0 4px; }
 header p { color: var(--muted); margin-top: 0; }
+
 .status {
   background: var(--panel);
   border: 2px solid var(--gold);
@@ -31,6 +35,7 @@ header p { color: var(--muted); margin-top: 0; }
   margin: 16px 0;
   min-height: 24px;
 }
+
 section {
   background: var(--panel);
   border: 1px solid #2a2a2a;
@@ -38,10 +43,13 @@ section {
   padding: 16px;
   margin: 20px 0;
 }
+
 h2 { color: var(--gold); font-size: 22px; margin: 0 0 8px; }
 .muted { color: var(--muted); font-size: 16px; }
+
 label { display: block; margin: 12px 0; }
 label.check { display: flex; align-items: center; gap: 12px; }
+
 input[type="text"],
 input[type="url"],
 input[type="password"],
@@ -57,12 +65,14 @@ select {
   border: 2px solid var(--gold-dim);
   border-radius: 8px;
 }
+
 input[type="checkbox"] {
   width: 28px;
   height: 28px;
   accent-color: var(--gold);
   flex-shrink: 0;
 }
+
 fieldset {
   border: 1px solid #2a2a2a;
   border-radius: 8px;
@@ -70,7 +80,9 @@ fieldset {
   padding: 12px;
 }
 legend { color: var(--gold); padding: 0 8px; }
+
 .row { display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; }
+
 button {
   background: var(--gold);
   color: #000;
@@ -84,6 +96,7 @@ button {
 }
 button:disabled { opacity: 0.4; cursor: default; }
 button.danger { background: var(--danger); color: #fff; }
+
 .loglist {
   list-style: none;
   padding: 0;
@@ -96,4 +109,43 @@ button.danger { background: var(--danger); color: #fff; }
   padding: 10px 4px;
   font-size: 16px;
 }
+
 footer { margin-top: 32px; text-align: center; }
+
+/* Tabbed layout: side menu next to the content. */
+.layout { display: flex; gap: 1rem; align-items: flex-start; }
+.layout main { flex: 1; min-width: 0; }
+
+#side-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 11rem;
+  position: sticky;
+  top: 1rem;
+}
+#side-menu button {
+  text-align: left;
+  background: var(--panel);
+  color: var(--gold);
+  border: 2px solid var(--gold-dim);
+  min-height: 48px;
+  padding: 12px 16px;
+}
+#side-menu button[aria-current="page"] {
+  background: var(--gold);
+  color: #000;
+  border-color: var(--gold);
+}
+
+/* On narrow screens (phones) the menu becomes a horizontal row on top. */
+@media (max-width: 40rem) {
+  .layout { flex-direction: column; }
+  #side-menu {
+    flex-direction: row;
+    overflow-x: auto;
+    position: static;
+    min-width: 0;
+  }
+  #side-menu button { white-space: nowrap; }
+}

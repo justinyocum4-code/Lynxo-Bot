@@ -14,8 +14,19 @@
 
 <div id="status" role="status" aria-live="polite" class="status">Not connected yet.</div>
 
+<div class="layout">
+<nav id="side-menu" aria-label="Dashboard sections">
+  <button type="button" data-tab="connect" aria-current="page">Connect</button>
+  <button type="button" data-tab="settings">Settings</button>
+  <button type="button" data-tab="reactionroles">Reaction Roles</button>
+  <button type="button" data-tab="modlog">Mod Log</button>
+  <button type="button" data-tab="userlookup">User Lookup</button>
+  <button type="button" data-tab="emergency">Emergency</button>
+  <button type="button" data-tab="backups">Backups</button>
+</nav>
+
 <main>
-  <section aria-labelledby="h-connect">
+  <section id="tab-connect" aria-labelledby="h-connect">
     <h2 id="h-connect">Connect</h2>
     <p>Only the server owner can open this dashboard. Log in with your Discord account to continue.</p>
     <label for="api-base">Bot address
@@ -27,7 +38,7 @@
     <p id="server-info" class="muted"></p>
   </section>
 
-  <section aria-labelledby="h-settings">
+  <section id="tab-settings" aria-labelledby="h-settings" hidden>
     <h2 id="h-settings">Settings</h2>
     <div class="row">
       <button id="btn-load-settings" type="button">Load current settings</button>
@@ -69,7 +80,7 @@
     </div>
   </section>
 
-  <section aria-labelledby="h-log">
+  <section id="tab-modlog" aria-labelledby="h-log" hidden>
     <h2 id="h-log">Mod log</h2>
     <p>Newest actions the bot took, in plain words.</p>
     <div class="row">
@@ -78,7 +89,7 @@
     <ul id="log-list" class="loglist" aria-label="Moderation log"></ul>
   </section>
 
-  <section aria-labelledby="h-user">
+  <section id="tab-userlookup" aria-labelledby="h-user" hidden>
     <h2 id="h-user">User lookup</h2>
     <p>Find a member's strikes by their Discord user ID.</p>
     <label for="lookup-id">User ID
@@ -91,7 +102,7 @@
     <div id="lookup-result" class="muted"></div>
   </section>
 
-  <section aria-labelledby="h-panic">
+  <section id="tab-emergency" aria-labelledby="h-panic" hidden>
     <h2 id="h-panic">Emergency</h2>
     <p>Lock the server down fast. Unlock restores everything.</p>
     <div class="row">
@@ -105,7 +116,7 @@
     </div>
   </section>
 
-  <section aria-labelledby="h-backup">
+  <section id="tab-backups" aria-labelledby="h-backup" hidden>
     <h2 id="h-backup">Backups</h2>
     <p>A backup saves your channels and roles. Keep the downloaded file somewhere safe.</p>
     <div class="row">
@@ -115,7 +126,7 @@
     <ul id="backup-list" class="loglist" aria-label="Saved backups"></ul>
   </section>
 
-  <section aria-labelledby="h-rr">
+  <section id="tab-reactionroles" aria-labelledby="h-rr" hidden>
     <h2 id="h-rr">Reaction Roles</h2>
     <p>Members tap a reaction on the posted message to give themselves a role. Tap it again to remove it.</p>
     <div class="row">
@@ -155,6 +166,7 @@
     <p id="rr-status" class="muted"></p>
   </section>
 </main>
+</div>
 
 <footer>
   <p class="muted">Lynxo Bot dashboard. You log in with Discord — only the server owner can use this page.</p>
