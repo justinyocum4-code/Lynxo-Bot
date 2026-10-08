@@ -598,6 +598,59 @@ function rrFillRoleSelect(sel, selectedId) {
   }
 }
 
+const RR_EMOJIS = [
+  ["\U0001F918", "Rock on"],
+  ["\U0001F3B8", "Guitar"],
+  ["\U0001F3A4", "Microphone"],
+  ["\U0001F3A7", "Headphones"],
+  ["\U0001F3B6", "Music notes"],
+  ["\U0001F3B5", "Music note"],
+  ["\U0001F941", "Drum"],
+  ["\U0001F3B9", "Piano"],
+  ["\U0001F479", "Ogre"],
+  ["\U0001F480", "Skull"],
+  ["\U0001F525", "Fire"],
+  ["\U000026A1", "Lightning"],
+  ["\U00002764", "Heart"],
+  ["\U0001F4AF", "100"],
+  ["\U0001F44D", "Thumbs up"],
+  ["\U0001F44E", "Thumbs down"],
+  ["\U00002705", "Check mark"],
+  ["\U0000274C", "Cross mark"],
+  ["\U00002B50", "Star"],
+  ["\U0001F31F", "Glowing star"],
+  ["\U0001F4AA", "Flexed arm"],
+  ["\U0001F3AF", "Target"],
+  ["\U0001F3AA", "Circus tent"],
+  ["\U0001F3AD", "Masks"],
+  ["\U0001F3A8", "Art"],
+  ["\U0001F4E2", "Megaphone"],
+  ["\U0001F4C5", "Calendar"],
+  ["\U0001F39F", "Tickets"],
+  ["\U0001F37A", "Beer"],
+  ["\U00002615", "Coffee"],
+];
+function rrFillEmojiSelect(sel, selectedEmoji) {
+  sel.innerHTML = "";
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "\u2014 pick an emoji \u2014";
+  sel.appendChild(blank);
+  for (const [emoji, label] of RR_EMOJIS) {
+    const o = document.createElement("option");
+    o.value = emoji;
+    o.textContent = emoji + " " + label;
+    if (emoji === selectedEmoji) o.selected = true;
+    sel.appendChild(o);
+  }
+  const other = document.createElement("option");
+  other.value = "__other__";
+  other.textContent = "Other (type your own)";
+  if (selectedEmoji && !RR_EMOJIS.some(([e]) => e === selectedEmoji)) {
+    other.selected = true;
+  }
+  sel.appendChild(other);
+}
 function rrAddRow(mapping) {
   mapping = mapping || {};
   const row = document.createElement("div");
@@ -606,15 +659,27 @@ function rrAddRow(mapping) {
 
   const emojiLabel = document.createElement("label");
   emojiLabel.textContent = "Emoji ";
-  const emoji = document.createElement("input");
-  emoji.type = "text";
-  emoji.className = "rr-emoji";
-  emoji.setAttribute("inputmode", "text");
-  emoji.placeholder = "🤘";
-  emoji.maxLength = 32;
-  emoji.value = mapping.emoji || "";
-  emoji.setAttribute("aria-label", "Emoji");
-  emojiLabel.appendChild(emoji);
+  const emojiSel = document.createElement("select");
+  emojiSel.className = "rr-emoji-sel";
+  emojiSel.setAttribute("aria-label", "Emoji");
+  rrFillEmojiSelect(emojiSel, mapping.emoji || "");
+  const emojiCustom = document.createElement("input");
+  emojiCustom.type = "text";
+  emojiCustom.className = "rr-emoji";
+  emojiCustom.setAttribute("inputmode", "text");
+  emojiCustom.placeholder = "\U0001F918";
+  emojiCustom.maxLength = 32;
+  emojiCustom.setAttribute("aria-label", "Custom emoji");
+  const isCustom = mapping.emoji &&
+    !RR_EMOJIS.some(([e]) => e === mapping.emoji);
+  emojiCustom.value = isCustom ? mapping.emoji : "";
+  emojiCustom.style.display = isCustom ? "" : "none";
+  emojiSel.addEventListener("change", () => {
+    emojiCustom.style.display =
+      emojiSel.value === "__other__" ? "" : "none";
+  });
+  emojiLabel.appendChild(emojiSel);
+  emojiLabel.appendChild(emojiCustom);
 
   const roleLabel = document.createElement("label");
   roleLabel.textContent = "Role ";
@@ -688,7 +753,11 @@ $("btn-rr-load").addEventListener("click", async () => {
 $("btn-rr-save").addEventListener("click", async () => {
   const mappings = [];
   for (const row of document.querySelectorAll("#rr-mappings .rr-row")) {
-    const emoji = row.querySelector(".rr-emoji").value.trim();
+    const emojiSel = row.querySelector(".rr-emoji-sel");
+    const emojiCustom = row.querySelector(".rr-emoji");
+    const emoji = (emojiSel && emojiSel.value === "__other__"
+      ? emojiCustom.value
+      : (emojiSel ? emojiSel.value : emojiCustom.value)).trim();
     const roleId = row.querySelector(".rr-role").value;
     const label = row.querySelector(".rr-label").value.trim();
     if (!emoji || !roleId) continue;
