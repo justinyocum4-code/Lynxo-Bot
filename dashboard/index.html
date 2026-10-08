@@ -15,16 +15,12 @@
 <main>
   <section aria-labelledby="h-connect">
     <h2 id="h-connect">Connect</h2>
-    <p>Enter these once — this page remembers them on your device.</p>
+    <p>Only the server owner can open this dashboard. Log in with your Discord account to continue.</p>
     <label for="api-base">Bot address
       <input id="api-base" type="url" inputmode="url" placeholder="https://lynxo-bot.onrender.com" autocomplete="off">
     </label>
-    <label for="api-key">Dashboard key
-      <input id="api-key" type="password" placeholder="The DASHBOARD_KEY from Render" autocomplete="off">
-    </label>
     <div class="row">
-      <button id="btn-save-creds" type="button">Save</button>
-      <button id="btn-test" type="button">Test connection</button>
+      <button id="btn-discord-login" type="button">Log in with Discord</button>
     </div>
     <p id="server-info" class="muted"></p>
   </section>
@@ -113,7 +109,7 @@
   </section>
 </main>
 <footer>
-  <p class="muted">Lynxo Bot dashboard. Your key never leaves your device except to talk to your bot.</p>
+  <p class="muted">Lynxo Bot dashboard. You log in with Discord — only the server owner can use this page.</p>
 </footer>
 <script src="app.js"></script>
 </body>
