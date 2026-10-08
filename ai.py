@@ -126,7 +126,7 @@ async def ai_plan_server_edit(prompt):
                             {"role": "system", "content": system},
                             {"role": "user", "content": prompt[:1000]},
                         ],
-                        "max_tokens": 800,
+                        "max_tokens": 2500,
                         "temperature": 0,
                     },
                     timeout=timeout,
@@ -147,7 +147,12 @@ async def ai_plan_server_edit(prompt):
                     ln for ln in text.split("\n")
                     if not ln.strip().startswith("```")
                 ).strip()
-            actions = json.loads(text)
+            try:
+                actions = json.loads(text)
+            except Exception as e:  # noqa: BLE001
+                print(f"ai_plan: {model} -> JSON parse failed: {e}; "
+                      f"text was: {text[:300]}", flush=True)
+                continue
             return actions if isinstance(actions, list) else None
         except Exception as e:  # noqa: BLE001
             print(f"ai_plan: {model} -> error: {e}", flush=True)
