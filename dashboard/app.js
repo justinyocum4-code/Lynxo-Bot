@@ -779,6 +779,21 @@ $("btn-rr-new").addEventListener("click", () => {
   rrSay("New embed. Fill it in, then Save.");
   $("rr-name").focus();
 });
+$("btn-rr-find").addEventListener("click", async () => {
+  const raw = $("rr-find-id").value.trim();
+  if (!raw) { rrSay("Paste a message ID or link first."); return; }
+  rrSay("Looking up embed…");
+  try {
+    const data = await api("/api/reaction-roles/find",
+      { method: "POST", body: { message_id: raw } });
+    const embed = data.embed;
+    const ix = rrEmbeds.findIndex((e) => e.id === embed.id);
+    if (ix >= 0) rrEmbeds[ix] = embed; else rrEmbeds.push(embed);
+    rrRefreshEmbedSelect();
+    rrFillEmbedForm(embed);
+    toast("Found.");
+  } catch (e) { /* say() already ran */ }
+});
 $("btn-rr-remove").addEventListener("click", async () => {
   if (!rrCurrentId) { rrSay("Nothing to delete — this embed was never saved."); return; }
   const embed = rrEmbeds.find((e) => e.id === rrCurrentId);
