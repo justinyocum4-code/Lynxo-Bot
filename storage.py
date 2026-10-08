@@ -40,6 +40,8 @@ class Store:
             "strikes": {},       # user_id -> {"count": int, "history": [...]}
             "quarantined": {},   # user_id -> [role ids to restore]
             "verify": {},        # user_id -> {"fails": int}
+            "nuke_whitelist": {"users": [], "roles": []},  # exempt from anti-nuke
+            "panic": {},         # saved pre-panic channel overwrites (for /unlock)
         }
 
     def guild(self, gid):
@@ -48,6 +50,8 @@ class Store:
         # Merge in any defaults added by newer versions.
         for k, v in DEFAULT_SETTINGS.items():
             g["settings"].setdefault(k, copy.deepcopy(v))
+        g.setdefault("nuke_whitelist", {"users": [], "roles": []})
+        g.setdefault("panic", {})
         return g
 
     def setup_guilds(self):

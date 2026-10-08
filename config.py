@@ -24,6 +24,18 @@ DEFAULT_SETTINGS = {
     "strikes_kick": 3,
     "strikes_ban": 4,
     "escalation_timeout_minutes": 10,
+    # Anti-nuke (Phase 2)
+    "nuke_channel_threshold": 3,   # channel creates/deletes inside the window
+    "nuke_channel_window": 60,     # seconds
+    "nuke_role_threshold": 3,      # role creates/deletes/updates inside the window
+    "nuke_role_window": 60,        # seconds
+    "nuke_webhook_threshold": 3,   # webhook creations inside the window
+    "nuke_webhook_window": 60,     # seconds
+    "nuke_remove_threshold": 5,    # member removals (kick/ban/prune) inside the window
+    "nuke_remove_window": 60,     # seconds
+    "nuke_action": "strip",        # "strip" = remove all roles, "ban" = ban the offender
+    "nuke_auto_restore": True,     # restore from latest backup after a nuke trigger
+    "nuke_cooldown_minutes": 5,    # quiet period after a trigger so one incident doesn't spam
 }
 
 # Regex fragments (case-insensitive) for common scam / phishing lures.

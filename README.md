@@ -1,9 +1,10 @@
-# Lynxo Bot — Discord security bot (Phase 1: security core)
+# Lynxo Bot — Discord security bot (Phases 1–3)
 
 All-in-one server protection: anti-raid lockdown, heat-based spam scoring,
 word/invite/scam-link filters, strike escalation (warn, timeout, kick, ban),
-quarantine, button verification, and an 18+ photo-check flow with a mod
-review queue. Everything is logged in plain English to #mod-logs.
+quarantine, button verification, 18+ photo-check flow, anti-nuke watches
+with panic/lockdown modes, server backups with restore, and a phone-friendly
+web dashboard. Everything is logged in plain English to #mod-logs.
 
 No paid services are used. The optional AI moderation uses Groq's free tier.
 
@@ -26,6 +27,52 @@ No paid services are used. The optional AI moderation uses Groq's free tier.
   with /approve18 or deny with /deny18. Three denials flag manual review.
 - **Logging:** every auto action is posted to #mod-logs in plain words with
   who, what, why, and when.
+
+## What Phase 2 does (anti-nuke + panic)
+
+- **Nuke watches:** 3+ channel creates/deletes in 60 seconds, 3+ role
+  changes in 60 seconds, webhook creation spam, a role gaining
+  Administrator, a member gaining Administrator, a bot being added, or
+  5+ member removals (kick/ban/prune) in 60 seconds. The server owner,
+  the bot itself, and anyone you exempt are never punished.
+- **On trigger:** the offender is stripped of all roles (or banned, your
+  choice via `/nuke action`), rogue webhooks are deleted, you get a DM,
+  it is logged, and — if a backup exists — the bot restores it
+  automatically (toggle with `/nuke auto_restore`). A 5-minute cooldown
+  keeps one incident from spamming alerts.
+- **What can and can't be reverted:** deleted channels and roles can be
+  recreated from a backup (names, positions, permissions, overwrites).
+  Messages inside channels are NOT in backups and can't come back.
+  Bans done by the attacker need a manual unban. Webhooks the attacker
+  made are deleted, not restored.
+- **Panic modes:** `/panic` locks all text channels (nobody can talk),
+  deletes invites, and pauses verification. `/lockdown` does all that
+  plus freezes voice channels. `/unlock` puts every permission back the
+  way it was. Use `/nuke status` to see the current settings.
+- **Exemptions:** `/nuke exempt_add` / `/nuke exempt_remove` /
+  `/nuke exempt_list` for trusted users or roles.
+
+## What Phase 3 does (backups + dashboard)
+
+- **Backups:** `/backup` snapshots every role and channel (names,
+  positions, permissions, overwrites) and sends you the file — keep it
+  somewhere safe, because files stored on the bot disappear when it
+  restarts. `/backups` lists what is on the bot. `/restore` takes an
+  uploaded backup file, shows you what it holds, and rebuilds anything
+  missing after you press "Yes, restore". Existing things are skipped,
+  never duplicated.
+- **Dashboard API:** the bot's web server also serves a small JSON API
+  under `/api/*` for the dashboard page. It is locked with a
+  `DASHBOARD_KEY` you choose — without the key, every call is rejected.
+  Endpoints: health, settings (get/put), mod log, strikes
+  (lookup/clear), backup, backup list, panic, unlock.
+- **Dashboard page:** the `dashboard/` folder is a static site (no build
+  step): settings toggles, mod log, user strike lookup, panic buttons,
+  and backup controls. Gold-on-black, big buttons, screen-reader
+  friendly. Host it on GitHub Pages (repo Settings > Pages > Deploy
+  from branch, folder `/dashboard`), then open the page on your phone,
+  enter your bot's address (e.g. `https://lynxo-bot.onrender.com`) and
+  your dashboard key once — it remembers them.
 
 ## Setup
 
@@ -61,6 +108,8 @@ Then save. The bot cannot see joins or scan messages without them.
    - `DISCORD_TOKEN` — your bot token (paste it; it stays secret).
    - `GROQ_API_KEY` — only if you want the AI moderation assist; leave it
      out otherwise and the built-in filters do the job alone.
+   - `DASHBOARD_KEY` — any long random string you make up. This is the
+     password for the dashboard page. Use the same value in the dashboard.
 4. Deploy. The bot starts itself and opens a `/health` page so Render can
    see it is alive.
 
@@ -84,6 +133,10 @@ plus `/health` every 5 minutes. That keeps the bot awake around the clock.
 - `/filter add`, `/filter remove`, `/filter list`
 - `/filter toggle_words`, `/filter toggle_invites`, `/filter toggle_links`,
   `/filter toggle_ai`
+- `/panic`, `/lockdown`, `/unlock`
+- `/nuke status`, `/nuke exempt_add`, `/nuke exempt_remove`,
+  `/nuke exempt_list`, `/nuke action`, `/nuke auto_restore`
+- `/backup`, `/backups`, `/restore`
 - `/setup` (admin, run once)
 
 ## Local testing
@@ -97,15 +150,15 @@ Never put your real token in any file you share or upload.
 ## Notes and limits
 
 - Settings, strikes, and verification state are kept in a small `data.json`
-  file. Render's free disk wipes on restart, so long-term history moves to
-  real storage in Phase 3 (backups + dashboard).
+  file. Render's free disk wipes on restart, so treat it as temporary.
+  Backups you download from `/backup` (or the dashboard) are the durable
+  copies — keep them.
 - The 18+ photo check is human-reviewed in Phase 1. The code has a clean
   `vision.py` stub ready for an AI vision provider in a later phase.
 - Slash commands can take up to an hour to appear the very first time;
   after /setup they sync to your server immediately.
-
-## Coming later
-
-- Phase 2: anti-nuke (channel/role/webhook/prune/bot-add watches + rollback)
-  and panic/lockdown modes.
-- Phase 3: server backups + restore, and the web dashboard.
+- The dashboard API is disabled until you set `DASHBOARD_KEY`. The page
+  will tell you plainly if the key is wrong or the bot is asleep.
+- Anti-nuke finds the culprit through Discord's audit log. If it can't
+  tell who did it, it alerts you loudly but punishes nobody — better safe
+  than banning the wrong person.
