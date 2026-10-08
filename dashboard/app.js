@@ -1030,3 +1030,171 @@ $("btn-builder-run").addEventListener("click", async () => {
   } catch (e) { /* say() already ran */ }
   btn.disabled = false;
 });
+
+/* ---------------- Tickets tab ---------------- */
+function tkSay(msg) {
+  const el = $("tickets-status");
+  if (el) { el.textContent = msg; say(msg); }
+}
+const TK_EMOJIS = [["🎫","Ticket"],["🎟️","Tickets"],["❓","Question mark"],
+  ["❔","White question"],["💬","Speech bubble"],["📩","Envelope"],
+  ["📨","Incoming envelope"],["🆘","SOS"],["⚠️","Warning"],["🔧","Wrench"],
+  ["🛠️","Tools"],["🤝","Handshake"],["👋","Wave"],["🙏","Folded hands"]];
+function tkFillEmojiSelect(sel, current) {
+  sel.innerHTML = "";
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "— no emoji —";
+  sel.appendChild(blank);
+  for (const [emoji, label] of TK_EMOJIS) {
+    const o = document.createElement("option");
+    o.value = emoji;
+    o.textContent = emoji + " " + label;
+    if (emoji === current) o.selected = true;
+    sel.appendChild(o);
+  }
+  if (current && !TK_EMOJIS.some(([e]) => e === current)) {
+    const o = document.createElement("option");
+    o.value = current;
+    o.textContent = current + " (current)";
+    o.selected = true;
+    sel.appendChild(o);
+  }
+}
+async function tkEnsureLists() {
+  // Channels
+  const chSel = $("tk-channel");
+  if (chSel && !chSel.dataset.loaded) {
+    try {
+      const data = await api("/api/channels");
+      const cur = chSel.value;
+      chSel.innerHTML = "";
+      const def = document.createElement("option");
+      def.value = "";
+      def.textContent = "— pick a channel —";
+      chSel.appendChild(def);
+      for (const c of data.channels) {
+        if (c.type !== 0) continue;
+        const o = document.createElement("option");
+        o.value = c.id;
+        o.textContent = "#" + c.name;
+        chSel.appendChild(o);
+      }
+      chSel.value = cur;
+      chSel.dataset.loaded = "1";
+    } catch (e) { /* say() already ran */ }
+  }
+  // Roles
+  const rSel = $("tk-support-role");
+  if (rSel && !rSel.dataset.loaded) {
+    try {
+      const data = await api("/api/roles");
+      const cur = rSel.value;
+      rSel.innerHTML = "";
+      const def = document.createElement("option");
+      def.value = "";
+      def.textContent = "— no special role (admins only) —";
+      rSel.appendChild(def);
+      for (const r of (data.roles || [])) {
+        const o = document.createElement("option");
+        o.value = r.id;
+        o.textContent = r.name;
+        rSel.appendChild(o);
+      }
+      rSel.value = cur;
+      rSel.dataset.loaded = "1";
+    } catch (e) { /* say() already ran */ }
+  }
+}
+function tkRenderOpenList(tickets) {
+  const wrap = $("tickets-open-list");
+  wrap.innerHTML = "";
+  if (!tickets.length) {
+    wrap.innerHTML = "<p class=\"muted\">No open tickets.</p>";
+    return;
+  }
+  for (const t of tickets) {
+    const row = document.createElement("div");
+    row.className = "tk-row";
+    const label = document.createElement("span");
+    label.textContent = t.thread_name + " — opened by " + t.owner + " ";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Close";
+    btn.setAttribute("aria-label", "Close ticket " + t.thread_name);
+    btn.addEventListener("click", async () => {
+      if (!confirm("Close ticket '" + t.thread_name + "'?")) return;
+      tkSay("Closing…");
+      try {
+        const data = await api("/api/tickets/close",
+          { method: "POST", body: { thread_id: t.thread_id } });
+        tkSay(data.closed ? "Ticket closed." : "Ticket was already gone.");
+        toast(data.closed ? "Closed." : "Already gone.");
+        tkLoadOpen();
+      } catch (e) { /* say() already ran */ }
+    });
+    row.appendChild(label);
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  }
+}
+async function tkLoadOpen() {
+  try {
+    const data = await api("/api/tickets");
+    tkRenderOpenList(data.open_tickets || []);
+  } catch (e) { /* say() already ran */ }
+}
+$("btn-tickets-load").addEventListener("click", async () => {
+  tkSay("Loading ticket settings…");
+  try {
+    await tkEnsureLists();
+    const data = await api("/api/tickets");
+    const p = data.panel || {};
+    $("tk-enabled").checked = !!p.enabled;
+    $("tk-support-role").value = p.support_role_id || "";
+    $("tk-welcome").value = p.welcome || "";
+    $("tk-channel").value = p.channel_id || "";
+    $("tk-title").value = p.title || "Need help?";
+    $("tk-description").value = p.description || "";
+    $("tk-color").value = p.color || "#FFD700";
+    $("tk-image-url").value = p.image_url || "";
+    $("tk-button-text").value = p.button_text || "Open a Ticket";
+    tkFillEmojiSelect($("tk-button-emoji"), p.button_emoji || "🎫");
+    $("tk-button-style").value = p.button_style || "primary";
+    tkRenderOpenList(data.open_tickets || []);
+    tkSay(p.message_id ? "Loaded. Panel is posted." : "Loaded. Panel not posted yet.");
+  } catch (e) { /* say() already ran */ }
+});
+$("btn-tickets-save").addEventListener("click", async () => {
+  tkSay("Saving…");
+  try {
+    await api("/api/tickets", { method: "POST", body: {
+      enabled: $("tk-enabled").checked,
+      support_role_id: $("tk-support-role").value,
+      welcome: $("tk-welcome").value,
+      channel_id: $("tk-channel").value,
+      title: $("tk-title").value,
+      description: $("tk-description").value,
+      color: $("tk-color").value,
+      image_url: $("tk-image-url").value.trim(),
+      button_text: $("tk-button-text").value,
+      button_emoji: $("tk-button-emoji").value,
+      button_style: $("tk-button-style").value,
+    }});
+    tkSay("Ticket settings saved.");
+    toast("Saved.");
+  } catch (e) { /* say() already ran */ }
+});
+$("btn-tickets-post").addEventListener("click", async () => {
+  tkSay("Posting panel…");
+  try {
+    const data = await api("/api/tickets/post", { method: "POST", body: {} });
+    tkSay("Panel posted.");
+    toast("Posted.");
+  } catch (e) { /* say() already ran */ }
+});
+$("btn-tickets-refresh").addEventListener("click", () => {
+  tkSay("Refreshing…");
+  tkLoadOpen();
+  tkSay("List refreshed.");
+});

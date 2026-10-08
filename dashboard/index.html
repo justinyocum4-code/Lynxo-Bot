@@ -28,6 +28,7 @@
   <button type="button" data-tab="community">Community</button>
   <button type="button" data-tab="custom">Custom</button>
   <button type="button" data-tab="serverbuilder">Server Builder</button>
+  <button type="button" data-tab="tickets">Tickets</button>
 </nav>
 <div id="menu-scrim" hidden></div>
 
@@ -384,6 +385,89 @@
       <button id="btn-builder-run" type="button">Run</button>
     </div>
     <div id="builder-result" role="status"></div>
+  </section>
+  <section id="tab-tickets" aria-labelledby="h-tickets" hidden>
+    <h2 id="h-tickets">Tickets</h2>
+    <p>Members press a button to open a private support thread. Only they and your mods can see it.</p>
+    <div class="row">
+      <button id="btn-tickets-load" type="button">Load ticket settings</button>
+    </div>
+    <fieldset>
+      <legend>Ticket system</legend>
+      <label class="check"><input type="checkbox" id="tk-enabled"> Tickets turned on</label>
+      <label>Support role
+        <select id="tk-support-role" aria-label="Support role">
+          <option value="">— press “Load ticket settings” —</option>
+        </select>
+      </label>
+      <p class="muted">Members with this role (plus admins) can see and close tickets.</p>
+      <label>Welcome message
+        <textarea id="tk-welcome" rows="3" maxlength="1000">Thanks for opening a ticket! Describe your issue and a mod will be with you soon.</textarea>
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>Ticket panel</legend>
+      <label>Panel channel
+        <select id="tk-channel" aria-label="Ticket panel channel">
+          <option value="">— press “Load ticket settings” —</option>
+        </select>
+      </label>
+      <label>Panel title
+        <input id="tk-title" type="text" maxlength="256" value="Need help?" autocomplete="off">
+      </label>
+      <label>Panel text
+        <textarea id="tk-description" rows="4" maxlength="2000">Press the button below to open a private support ticket. Only you and the mods can see it.</textarea>
+      </label>
+      <label>Panel color
+        <select id="tk-color" aria-label="Panel color">
+          <option value="#FFD700">Gold</option>
+          <option value="#FF0000">Red</option>
+          <option value="#0000FF">Blue</option>
+          <option value="#00FF00">Green</option>
+          <option value="#800080">Purple</option>
+          <option value="#FFA500">Orange</option>
+          <option value="#FFC0CB">Pink</option>
+          <option value="#008080">Teal</option>
+          <option value="#FFFFFF">White</option>
+          <option value="#000000">Black</option>
+        </select>
+      </label>
+      <label>Panel image URL
+        <input id="tk-image-url" type="url" maxlength="2000" autocomplete="off"
+               placeholder="https://…" aria-label="Panel image URL">
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>Ticket button</legend>
+      <label>Button text
+        <input id="tk-button-text" type="text" maxlength="80" value="Open a Ticket" autocomplete="off">
+      </label>
+      <label>Button emoji
+        <select id="tk-button-emoji" aria-label="Button emoji"></select>
+      </label>
+      <label>Button color
+        <select id="tk-button-style" aria-label="Button color">
+          <option value="primary">Blue</option>
+          <option value="success">Green</option>
+          <option value="danger">Red</option>
+          <option value="secondary">Grey</option>
+        </select>
+      </label>
+    </fieldset>
+    <div class="row">
+      <button id="btn-tickets-save" type="button">Save ticket settings</button>
+    </div>
+    <div class="row">
+      <button id="btn-tickets-post" type="button">Post / update panel</button>
+    </div>
+    <p id="tickets-status" class="muted" role="status"></p>
+    <fieldset>
+      <legend>Open tickets</legend>
+      <div id="tickets-open-list" aria-label="Open tickets"></div>
+      <div class="row">
+        <button id="btn-tickets-refresh" type="button">Refresh list</button>
+      </div>
+    </fieldset>
   </section>
 </main>
 
