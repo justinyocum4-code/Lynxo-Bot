@@ -97,6 +97,9 @@ class ReactionRoles(commands.Cog):
             description=description or "Tap a reaction to pick a role.",
             color=int(cfg.get("color") or 16766720),
         )
+        image_url = str(cfg.get("image_url") or "").strip()
+        if image_url:
+            embed.set_image(url=image_url)
         message = None
         if cfg.get("message_id"):
             try:

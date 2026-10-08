@@ -667,6 +667,7 @@ def _rr_config_view(guild, cfg):
         "title": str(cfg.get("title") or ""),
         "description": str(cfg.get("description") or ""),
         "color": "#%06X" % (int(cfg.get("color") or 16766720) & 0xFFFFFF),
+        "image_url": str(cfg.get("image_url") or ""),
         "mappings": mappings,
     }
 
@@ -701,6 +702,11 @@ async def api_reaction_roles_post(request):
     color = _parse_rr_color(body.get("color"))
     if color is None:
         color = 16766720  # gold
+    image_url = str(body.get("image_url") or "").strip()[:2000]
+    if image_url and not image_url.lower().startswith(("http://", "https://")):
+        return web.json_response(
+            {"error": "Image URL must start with http:// or https://."},
+            status=400)
 
     raw_mappings = body.get("mappings") or []
     if not isinstance(raw_mappings, list) or len(raw_mappings) > 20:
@@ -732,6 +738,7 @@ async def api_reaction_roles_post(request):
         "title": title,
         "description": description,
         "color": color,
+        "image_url": image_url,
         "mappings": mappings,
     }
     bot.store.save()
