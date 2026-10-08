@@ -825,6 +825,36 @@ async def api_reaction_roles_delete(request):
 
 
 @_guard
+async def api_reaction_roles_find(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("ReactionRoles")
+    if cog is None:
+        return web.json_response(
+            {"error": "Reaction roles are not loaded."}, status=500)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    raw = str(body.get("message_id") or "").strip()
+    # Accept a full message link too — the ID is the last number in it.
+    import re
+    nums = re.findall(r"\d+", raw)
+    if not nums:
+        return web.json_response({"error": "No message ID found."}, status=400)
+    mid = int(nums[-1])
+    cfg = cog.touch(guild)
+    for embed in cfg.get("embeds", []):
+        if embed.get("message_id") and int(embed["message_id"]) == mid:
+            return web.json_response({"ok": True,
+                                      "embed": _rr_embed_view(guild, embed)})
+    return web.json_response({"error": "No reaction-role embed with that "
+                                       "message ID."}, status=404)
+
+
+@_guard
 async def api_reaction_roles_remove(request):
     guild = _guild(request)
     if guild is None:
@@ -1352,6 +1382,7 @@ async def start(port, bot=None):
     app.router.add_post("/api/reaction-roles/post", api_reaction_roles_publish)
     app.router.add_post("/api/reaction-roles/delete", api_reaction_roles_delete)
     app.router.add_post("/api/reaction-roles/remove", api_reaction_roles_remove)
+    app.router.add_post("/api/reaction-roles/find", api_reaction_roles_find)
     app.router.add_get("/api/releases", api_releases_get)
     app.router.add_post("/api/releases", api_releases_post)
     app.router.add_post("/api/releases/check", api_releases_check)
