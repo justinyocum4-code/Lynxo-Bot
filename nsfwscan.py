@@ -8,12 +8,20 @@ from discord.ext import commands
 from ai import ai_vision_scan
 
 SCAN_PROMPT = (
-    "Analyze this photo. Is it likely AI-generated or a real photograph? "
-    "Look for: unnatural skin texture, wrong number of fingers or weird hands, "
-    "inconsistent lighting or shadows, overly perfect symmetry, strange or "
-    "warped backgrounds, digital artifacts. Reply in exactly this format:\n"
+    "Analyze this photo. Answer two questions.\n\n"
+    "1. Is it AI-generated or a real photograph? Look for: unnatural skin "
+    "texture, wrong number of fingers or weird hands, inconsistent lighting "
+    "or shadows, overly perfect symmetry, strange or warped backgrounds, "
+    "digital artifacts.\n\n"
+    "2. Does it look like an amateur phone photo or a professional shoot? "
+    "Look for: studio lighting, professional makeup and staging, "
+    "porn-site or studio watermarks, overly polished production quality. "
+    "A professional-looking photo was likely pulled from the internet, "
+    "not taken by the poster.\n\n"
+    "Reply in exactly this format:\n"
     "VERDICT: REAL  (or VERDICT: FAKE)\n"
-    "REASON: one short sentence explaining why."
+    "SOURCE: AMATEUR  (or SOURCE: PROFESSIONAL)\n"
+    "REASON: one short sentence explaining both calls."
 )
 
 DEFAULTS = {
@@ -62,12 +70,16 @@ class NsfwScan(commands.Cog):
                 image_bytes, att.content_type or "image/jpeg", SCAN_PROMPT)
             if not result:
                 return
-            verdict, reason = "UNKNOWN", ""
+            verdict, reason, source = "UNKNOWN", "", "UNKNOWN"
             for line in result.splitlines():
                 line = line.strip()
                 if line.upper().startswith("VERDICT:"):
                     v = line.split(":", 1)[1].strip().upper()
                     verdict = "FAKE" if "FAKE" in v else "REAL" if "REAL" in v else "UNKNOWN"
+                elif line.upper().startswith("SOURCE:"):
+                    sv = line.split(":", 1)[1].strip().upper()
+                    source = ("PROFESSIONAL" if "PROFESSIONAL" in sv
+                              else "AMATEUR" if "AMATEUR" in sv else "UNKNOWN")
                 elif line.upper().startswith("REASON:"):
                     reason = line.split(":", 1)[1].strip()[:300]
             if verdict == "FAKE":
@@ -77,6 +89,10 @@ class NsfwScan(commands.Cog):
             else:
                 emoji, label = "❓", "couldn't be judged"
             text = f"{emoji} AI scan: this photo {label}."
+            if source == "PROFESSIONAL":
+                text += " Looks professionally shot — likely pulled from the internet."
+            elif source == "AMATEUR":
+                text += " Looks like an amateur photo."
             if reason:
                 text += f" {reason}"
             text += "\n_(AI best guess — not a guarantee.)_"
