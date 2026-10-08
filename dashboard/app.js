@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 function say(msg) { $("status").textContent = msg; }
 function creds() {
   return {
-    base: (localStorage.getItem("lynxo_api_base") || "").replace(/\/$/, ""),
+    base: (localStorage.getItem("lynxo_api_base_v2") || "").replace(/\/$/, ""),
     key: localStorage.getItem("lynxo_session") || "",
   };
 }
@@ -39,7 +39,7 @@ async function api(path, opts) {
 }
 function saveBase() {
   const base = $("api-base").value.trim().replace(/\/$/, "");
-  localStorage.setItem("lynxo_api_base", base);
+  localStorage.setItem("lynxo_api_base_v2", base);
   return base;
 }
 $("btn-discord-login").addEventListener("click", async () => {
@@ -92,7 +92,7 @@ async function checkLogin() {
     say("Discord login didn't finish. Press “Log in with Discord” to try again.");
     return;
   }
-  $("api-base").value = localStorage.getItem("lynxo_api_base") || "";
+  $("api-base").value = localStorage.getItem("lynxo_api_base_v2") || "https://lynxo-bot.onrender.com";
   if ($("api-base").value && localStorage.getItem("lynxo_session")) {
     say("Welcome back. Checking your saved login…");
     checkLogin();
