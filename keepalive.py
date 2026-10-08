@@ -890,6 +890,12 @@ def _builder_find_role(guild, name):
     for r in guild.roles:
         if r.name.lower() == name:
             return r
+    # Fallback: match ignoring emojis/symbols.
+    norm = _builder_norm(name)
+    if norm:
+        for r in guild.roles:
+            if _builder_norm(r.name) == norm:
+                return r
     return None
 
 
