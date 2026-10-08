@@ -280,6 +280,16 @@ class Verification(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.active_sessions = set()  # user ids with an open 18+ photo wait
+        # Message context menu (can't use the decorator inside a class).
+        self.scan_ctx_menu = app_commands.ContextMenu(
+            name="Scan photo with AI",
+            callback=self.scan_photo_ctx,
+        )
+        self.bot.tree.add_command(self.scan_ctx_menu)
+
+    async def cog_unload(self):
+        self.bot.tree.remove_command(
+            self.scan_ctx_menu.name, type=self.scan_ctx_menu.type)
 
     # ---------------- /setup ----------------
 
@@ -563,7 +573,6 @@ class Verification(commands.Cog):
         await interaction.response.send_message(
             f"{member.mention} denied.", ephemeral=True)
 
-    @app_commands.context_menu(name="Scan photo with AI")
     async def scan_photo_ctx(self, interaction: discord.Interaction,
                              message: discord.Message):
         """Message context menu: AI-scan any photo. Mods only.
