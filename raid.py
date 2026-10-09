@@ -20,6 +20,10 @@ class Raid(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
+        # Don't count bot joins toward raid detection — admins inviting
+        # bots is normal, not a raid.
+        if member.bot:
+            return
         guild = member.guild
         g = self.bot.store.guild(guild.id)
         s = g["settings"]
