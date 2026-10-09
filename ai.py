@@ -123,6 +123,40 @@ async def ai_moderate(text):
     return None
 
 
+async def ai_chat(system, user_text, max_tokens=150):
+    """Freeform character chat via Groq. Returns reply text or None."""
+    key = os.environ.get("GROQ_API_KEY")
+    if not key or not (user_text or "").strip():
+        return None
+    for model in await _pick_models("text"):
+        try:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    URL,
+                    headers={"Authorization": f"Bearer {key}"},
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user_text[:1000]},
+                        ],
+                        "max_tokens": max_tokens,
+                        "temperature": 0.9,
+                    },
+                    timeout=timeout,
+                ) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = await resp.json()
+            text = data["choices"][0]["message"]["content"].strip()
+            if text:
+                return text
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
 async def ai_plan_server_edit(prompt):
     """Turn a plain-English server-edit request into a JSON action list.
 

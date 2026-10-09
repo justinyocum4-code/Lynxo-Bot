@@ -24,6 +24,7 @@ import tickets
 import achievements
 import shoutouts
 import nsfwscan
+import murray
 
 
 class LynxoBot(commands.Bot):
@@ -51,6 +52,7 @@ class LynxoBot(commands.Bot):
         await self.add_cog(achievements.Achievements(self))
         await self.add_cog(shoutouts.Shoutouts(self))
         await self.add_cog(nsfwscan.NsfwScan(self))
+        await self.add_cog(murray.Murray(self))
         # Persistent buttons must be re-registered every startup.
         self.add_view(verification.VerifyView(self))
         self.add_view(verification.AdultView(self))

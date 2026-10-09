@@ -1186,6 +1186,47 @@ async def api_nsfw_scan_save(request):
                               "nsfw_scan": _nsfw_scan_view(guild, cfg)})
 
 
+def _murray_view(guild, cfg):
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "channel_id": str(cfg.get("channel_id") or ""),
+    }
+
+
+@_guard
+async def api_murray_get(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    bot = _bot(request)
+    cog = bot.get_cog("Murray")
+    if cog is None:
+        return web.json_response({"error": "Murray not loaded."}, status=500)
+    return web.json_response(_murray_view(guild, cog._config(guild)))
+
+
+@_guard
+async def api_murray_save(request):
+    guild = _guild(request)
+    if guild is None:
+        return web.json_response({"error": "No server found."}, status=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"error": "Body must be JSON."}, status=400)
+    bot = _bot(request)
+    cog = bot.get_cog("Murray")
+    if cog is None:
+        return web.json_response({"error": "Murray not loaded."}, status=500)
+    cfg = cog._config(guild)
+    cfg["enabled"] = bool(body.get("enabled"))
+    ch_id = str(body.get("channel_id") or "").strip()
+    ch = guild.get_channel(int(ch_id)) if ch_id.isdigit() else None
+    cfg["channel_id"] = ch.id if ch else None
+    bot.store.save()
+    return web.json_response({"ok": True, "murray": _murray_view(guild, cfg)})
+
+
 def _releases_view(cfg):
     recent = cfg.get("announced") or []
     recent = recent[-10:]
@@ -1806,6 +1847,8 @@ async def start(port, bot=None):
     app.router.add_post("/api/shoutouts", api_shoutouts_save)
     app.router.add_get("/api/nsfw-scan", api_nsfw_scan_get)
     app.router.add_post("/api/nsfw-scan", api_nsfw_scan_save)
+    app.router.add_get("/api/murray", api_murray_get)
+    app.router.add_post("/api/murray", api_murray_save)
     app.router.add_post("/api/achievements", api_achievements_save)
     app.router.add_post("/api/reaction-roles/find", api_reaction_roles_find)
     app.router.add_get("/api/releases", api_releases_get)
