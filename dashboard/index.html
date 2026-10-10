@@ -32,6 +32,7 @@
   <button type="button" data-tab="achievements">Achievements</button>
   <button type="button" data-tab="shoutouts">Shoutouts</button>
   <button type="button" data-tab="nsfw">NSFW</button>
+  <button type="button" data-tab="murray">Murray</button>
 </nav>
 <div id="menu-scrim" hidden></div>
 
@@ -61,6 +62,13 @@
       <label class="check"><input type="checkbox" id="set-massping_filter"> Block @everyone / @here from regular members</label>
       <label class="check"><input type="checkbox" id="set-ai_moderation"> AI moderation (needs a Groq key on the bot)</label>
       <label class="check"><input type="checkbox" id="set-audit_log"> Log deleted and edited messages to #mod-logs</label>
+    </fieldset>
+    <fieldset>
+      <legend>Server hardening</legend>
+      <label class="check"><input type="checkbox" id="set-webhook_protection"> Delete unauthorized webhooks</label>
+      <label class="check"><input type="checkbox" id="set-malicious_file_block"> Block dangerous file types (.exe, .scr, .bat, etc.)</label>
+      <label class="check"><input type="checkbox" id="set-account_age_gate"> Require minimum account age to post</label>
+      <label>Minimum account age (days) <input type="number" id="set-account_age_gate_days" min="1" max="90"></label>
     </fieldset>
     <fieldset>
       <legend>Join security</legend>
@@ -549,6 +557,27 @@
       <button id="btn-nsfw-save" type="button">Save NSFW settings</button>
     </div>
     <p id="nsfw-status" class="muted" role="status"></p>
+  </section>
+  <section id="tab-murray" aria-labelledby="h-murray" hidden>
+    <h2 id="h-murray">Murray</h2>
+    <p>The grumpy old metalhead AI. He roasts music taste in his home channel and answers when mentioned.</p>
+    <div class="row">
+      <button id="btn-murray-load" type="button">Load Murray settings</button>
+    </div>
+    <fieldset>
+      <legend>Settings</legend>
+      <label class="check"><input type="checkbox" id="murray-enabled"> Murray is awake</label>
+      <label>Murray's home channel
+        <select id="murray-channel" aria-label="Murray's home channel">
+          <option value="">— press “Load Murray settings” —</option>
+        </select>
+      </label>
+      <p class="muted">In his home channel he replies to everything. Elsewhere he only answers mentions and /murray.</p>
+    </fieldset>
+    <div class="row">
+      <button id="btn-murray-save" type="button">Save Murray settings</button>
+    </div>
+    <p id="murray-status" class="muted" role="status"></p>
   </section>
 </main>
 

@@ -59,7 +59,7 @@ function toast(msg) {
 
 /* ---------- tabs ---------- */
 
-const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder", "tickets", "achievements", "shoutouts", "nsfw"];
+const TAB_NAMES = ["connect", "settings", "reactionroles", "modlog", "userlookup", "emergency", "backups", "newreleases", "community", "custom", "serverbuilder", "tickets", "achievements", "shoutouts", "nsfw", "murray"];
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "connect";
@@ -196,6 +196,8 @@ const SETTING_FIELDS = [
   "nuke_channel_threshold", "nuke_auto_restore", "nuke_action",
   "auto_backup", "auto_backup_channel_id",
   "mass_mention_filter", "mass_mention_count", "voice_raid_protection",
+  "webhook_protection", "malicious_file_block",
+  "account_age_gate", "account_age_gate_days",
   "heat_slowmode", "heat_slowmode_seconds", "heat_slowmode_threshold",
   "raid_pattern_check",
   "welcome_enabled", "welcome_channel_id", "welcome_message",
@@ -1460,6 +1462,54 @@ $("btn-nsfw-save").addEventListener("click", async () => {
       channel_ids: ids,
     }});
     nsfwSay("NSFW settings saved.");
+    toast("Saved.");
+  } catch (e) { /* say() already ran */ }
+});
+
+/* ---------------- Murray tab ---------------- */
+function murraySay(msg) {
+  const el = $("murray-status");
+  if (el) { el.textContent = msg; say(msg); }
+}
+async function murrayEnsureChannels(selected) {
+  const sel = $("murray-channel");
+  if (!sel || sel.dataset.loaded) {
+    if (sel && selected) sel.value = selected;
+    return;
+  }
+  try {
+    const data = await api("/api/channels");
+    const cur = selected || sel.value;
+    sel.innerHTML = "";
+    const def = document.createElement("option");
+    def.value = ""; def.textContent = "— no home channel (mentions only) —";
+    sel.appendChild(def);
+    for (const c of data.channels) {
+      const o = document.createElement("option");
+      o.value = c.id; o.textContent = "#" + c.name;
+      sel.appendChild(o);
+    }
+    sel.value = cur;
+    sel.dataset.loaded = "1";
+  } catch (e) { /* say() already ran */ }
+}
+$("btn-murray-load").addEventListener("click", async () => {
+  murraySay("Loading Murray settings…");
+  try {
+    const data = await api("/api/murray");
+    $("murray-enabled").checked = !!data.enabled;
+    await murrayEnsureChannels(data.channel_id || "");
+    murraySay("Loaded.");
+  } catch (e) { /* say() already ran */ }
+});
+$("btn-murray-save").addEventListener("click", async () => {
+  murraySay("Saving…");
+  try {
+    await api("/api/murray", { method: "POST", body: {
+      enabled: $("murray-enabled").checked,
+      channel_id: $("murray-channel").value,
+    }});
+    murraySay("Murray settings saved.");
     toast("Saved.");
   } catch (e) { /* say() already ran */ }
 });
