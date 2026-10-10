@@ -26,6 +26,7 @@ import shoutouts
 import nsfwscan
 import murray
 import watcher
+import hardening
 
 
 class LynxoBot(commands.Bot):
@@ -55,6 +56,7 @@ class LynxoBot(commands.Bot):
         await self.add_cog(nsfwscan.NsfwScan(self))
         await self.add_cog(murray.Murray(self))
         await self.add_cog(watcher.Watcher(self))
+        await self.add_cog(hardening.Hardening(self))
         # Persistent buttons must be re-registered every startup.
         self.add_view(verification.VerifyView(self))
         self.add_view(verification.AdultView(self))
