@@ -1811,8 +1811,12 @@ async def cors_middleware(request, handler):
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, OPTIONS"
     return resp
 
+def build_app(bot=None):
+    """Build the single aiohttp app for the dashboard API.
 
-async def start(port, bot=None):
+    Combined-service entry point: run.py calls this, then registers
+    Murray's routes on the returned app before starting ONE runner
+    on $PORT. Standalone use goes through start() below."""
     app = web.Application(middlewares=[cors_middleware])
     app["bot"] = bot
     app["sessions"] = {}
@@ -1855,6 +1859,11 @@ async def start(port, bot=None):
     app.router.add_post("/api/releases", api_releases_post)
     app.router.add_post("/api/releases/check", api_releases_check)
     app.router.add_post("/api/editserver", api_editserver)
+    return app
+
+async def start(port, bot=None):
+    """Standalone helper: build the app and serve it on `port`."""
+    app = build_app(bot)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
